@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -252,6 +253,7 @@ func InitLog(flags *Flags) {
 
 func runPProfServer(config *pprof.Config) {
 	if config.Enabled {
+		runtime.SetBlockProfileRate(config.BlockProfileRate)
 		go func() {
 			if err := http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil); err != nil {
 				log.Printf("[pprof] failed to start, error: %s", err.Error())
