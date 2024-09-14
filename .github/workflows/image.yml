@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/orm-idle-connection-config
     paths:
       - "**.go"
       - "!**_test.go"

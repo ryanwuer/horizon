@@ -26,4 +26,6 @@ type Config struct {
 	SlowThreshold     time.Duration `yaml:"slowThreshold"`
 	MaxIdleConns      int           `yaml:"maxIdleConns"`
 	MaxOpenConns      int           `yaml:"maxOpenConns"`
+	ConnMaxLifetime   time.Duration `yaml:"connMaxLifetime"`
+	ConnMaxIdleTime   time.Duration `yaml:"connMaxIdleTime"`
 }

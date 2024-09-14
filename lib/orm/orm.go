@@ -56,24 +56,27 @@ func NewMySQLDB(db db.Config) (*gorm.DB, error) {
 
 	sqlDB.SetMaxIdleConns(db.MaxIdleConns)
 	sqlDB.SetMaxOpenConns(db.MaxOpenConns)
-	sqlDB.SetConnMaxLifetime(time.Hour)
-	sqlDB.SetConnMaxIdleTime(time.Hour)
+	sqlDB.SetConnMaxLifetime(db.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(db.ConnMaxIdleTime)
 
-	orm, err := gorm.Open(mysql.New(mysql.Config{
-		Conn: sqlDB,
-	}), &gorm.Config{
+	loggerConfig := logger.Config{
+		SlowThreshold:             db.SlowThreshold,
+		LogLevel:                  logger.Warn,
+		IgnoreRecordNotFoundError: false,
+		Colorful:                  true,
+	}
+
+	gormConfig := &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
 			TablePrefix:   "tb_",
 			SingularTable: true,
 		},
-		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags),
-			logger.Config{
-				SlowThreshold:             db.SlowThreshold,
-				LogLevel:                  logger.Warn,
-				IgnoreRecordNotFoundError: false,
-				Colorful:                  true,
-			}),
-	})
+		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), loggerConfig),
+	}
+
+	orm, err := gorm.Open(mysql.New(mysql.Config{
+		Conn: sqlDB,
+	}), gormConfig)
 
 	if db.PrometheusEnabled {
 		if err := orm.Use(prometheus.New(prometheus.Config{
