@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	membermanager "github.com/horizoncd/horizon/pkg/member/manager"
 	membermodels "github.com/horizoncd/horizon/pkg/member/models"
@@ -65,8 +66,9 @@ type MessageContent struct {
 }
 
 type ResourceCommonInfo struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name,omitempty"`
+	ID        uint      `json:"id"`
+	Name      string    `json:"name,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
 }
 
 // ApplicationInfo contains basic info of application
@@ -321,7 +323,8 @@ func (w *WebhookLogGenerator) makeRequestBody(ctx context.Context, dep *messageD
 		dep.pipelinerun != nil {
 		message.Pipelinerun = &PipelinerunInfo{
 			ResourceCommonInfo: ResourceCommonInfo{
-				ID: dep.pipelinerun.ID,
+				ID:        dep.pipelinerun.ID,
+				CreatedAt: dep.pipelinerun.CreatedAt,
 			},
 			ClusterID: dep.pipelinerun.ClusterID,
 			ClusterName: func() string {
