@@ -138,8 +138,13 @@ func (c *controller) CreateClusterV2(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	templateSchemaRenderVal := map[string]string{
+		"resourceType": "cluster",
+		"clusterName":  params.Name,
+		"environment":  params.Environment,
+	}
 	if err := buildTemplateInfo.Validate(ctx,
-		c.templateSchemaGetter, nil, c.buildSchema); err != nil {
+		c.templateSchemaGetter, templateSchemaRenderVal, c.buildSchema); err != nil {
 		return nil, err
 	}
 
@@ -488,6 +493,9 @@ func (c *controller) UpdateClusterV2(ctx context.Context, clusterID uint,
 			TemplateInfo:   templateInfo,
 			TemplateConfig: templateConfig,
 		}
+		renderValues["resourceType"] = "cluster"
+		renderValues["clusterName"] = cluster.Name
+		renderValues["environment"] = environmentName
 		return info.Validate(ctx, c.templateSchemaGetter, renderValues, c.buildSchema)
 	}()
 	if err != nil {
@@ -549,8 +557,6 @@ func (info *BuildTemplateInfo) Validate(ctx context.Context,
 	if templateSchemaRenderVal == nil {
 		templateSchemaRenderVal = make(map[string]string)
 	}
-	// TODO (remove it, currently some template need it)
-	templateSchemaRenderVal["resourceType"] = "cluster"
 	schema, err := trGetter.GetTemplateSchema(ctx, info.TemplateInfo.Name,
 		info.TemplateInfo.Release, templateSchemaRenderVal)
 	if err != nil {
