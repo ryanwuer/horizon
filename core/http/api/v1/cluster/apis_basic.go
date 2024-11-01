@@ -15,6 +15,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -359,6 +360,29 @@ func (a *API) Free(c *gin.Context) {
 	err = a.clusterCtl.FreeCluster(c, uint(clusterID))
 	if err != nil {
 		if e, ok := perror.Cause(err).(*herrors.HorizonErrNotFound); ok && e.Source == herrors.ClusterInDB {
+			response.AbortWithRPCError(c, rpcerror.NotFoundError.WithErrMsg(err.Error()))
+			return
+		}
+		log.WithFiled(c, "op", op).Errorf("%+v", err)
+		response.AbortWithRPCError(c, rpcerror.InternalError.WithErrMsg(err.Error()))
+		return
+	}
+	response.Success(c)
+}
+
+func (a *API) Maintain(c *gin.Context) {
+	op := "cluster: main"
+	clusterIDStr := c.Param(common.ParamClusterID)
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 0)
+	if err != nil {
+		response.AbortWithRequestError(c, common.InvalidRequestParam, err.Error())
+		return
+	}
+
+	err = a.clusterCtl.MaintainCluster(c, uint(clusterID), c.GetBool(common.Enabled))
+	if err != nil {
+		var e *herrors.HorizonErrNotFound
+		if errors.As(perror.Cause(err), &e) && e.Source == herrors.ClusterInDB {
 			response.AbortWithRPCError(c, rpcerror.NotFoundError.WithErrMsg(err.Error()))
 			return
 		}

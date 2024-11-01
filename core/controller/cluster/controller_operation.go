@@ -471,6 +471,11 @@ func (c *controller) ExecuteAction(ctx context.Context, clusterID uint,
 		return err
 	}
 
+	// check if the cluster is in maintaining status, if so, return error
+	if cluster.Status == common.ClusterStatusMaintaining {
+		return herrors.ErrClusterUnderMaintenanceNoActionAllowed
+	}
+
 	return c.k8sutil.ExecuteAction(ctx, &cd.ExecuteActionParams{
 		RegionEntity: regionEntity,
 		Namespace:    envValue.Namespace,
