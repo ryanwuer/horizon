@@ -85,6 +85,7 @@ type Controller interface {
 	Rollback(ctx context.Context, clusterID uint, request *RollbackRequest) (*PipelinerunIDResponse, error)
 
 	FreeCluster(ctx context.Context, clusterID uint) error
+	MaintainCluster(ctx context.Context, clusterID uint, enabled bool) error
 
 	// InternalDeploy todo(zx): remove after InternalDeployV2 is stabilized
 	InternalDeploy(ctx context.Context, clusterID uint,

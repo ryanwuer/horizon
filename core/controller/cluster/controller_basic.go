@@ -989,6 +989,31 @@ func (c *controller) FreeCluster(ctx context.Context, clusterID uint) (err error
 	return nil
 }
 
+// MaintainCluster set cluster under maintenance
+func (c *controller) MaintainCluster(ctx context.Context, clusterID uint, enabled bool) (err error) {
+	const op = "cluster controller: maintain cluster"
+	defer wlog.Start(ctx, op).StopPrint()
+
+	cluster, err := c.clusterMgr.GetByID(ctx, clusterID)
+	if err != nil {
+		return err
+	}
+
+	if enabled {
+		cluster.Status = common.ClusterStatusMaintaining
+	} else {
+		// cluster's status in db is empty in publishing state
+		// set cluster's status to empty to let publishing continue
+		cluster.Status = common.ClusterStatusEmpty
+	}
+	cluster, err = c.clusterMgr.UpdateByID(ctx, cluster.ID, cluster)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *controller) toExpireSeconds(ctx context.Context, expireTime string, environment string) (uint, error) {
 	expireSeconds := uint(0)
 	if expireTime != "" {

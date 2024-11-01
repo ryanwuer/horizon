@@ -54,6 +54,8 @@ const (
 	ClusterStatusFreed    = "Freed"
 	ClusterStatusDeleting = "Deleting"
 	ClusterStatusCreating = "Creating"
+	// ClusterStatusMaintaining means no publishing operation is allowed on the cluster currently
+	ClusterStatusMaintaining = "Maintaining"
 )
 
 const (
