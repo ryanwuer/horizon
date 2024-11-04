@@ -379,7 +379,19 @@ func (a *API) Maintain(c *gin.Context) {
 		return
 	}
 
-	err = a.clusterCtl.MaintainCluster(c, uint(clusterID), c.GetBool(common.Enabled))
+	enabledStr := c.Query(common.Enabled)
+	if enabledStr == "" {
+		response.AbortWithRequestError(c, common.InvalidRequestParam, "enabled should not be empty")
+		return
+	}
+	enabled := false
+	enabled, err = strconv.ParseBool(enabledStr)
+	if err != nil {
+		response.AbortWithRequestError(c, common.InvalidRequestParam, err.Error())
+		return
+	}
+
+	err = a.clusterCtl.MaintainCluster(c, uint(clusterID), enabled)
 	if err != nil {
 		var e *herrors.HorizonErrNotFound
 		if errors.As(perror.Cause(err), &e) && e.Source == herrors.ClusterInDB {
