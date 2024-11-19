@@ -52,8 +52,8 @@ func NewFactory(argoCDMapper argocd.Mapper, regionArgoCDMapper argocd.RegionMapp
 func (f *factory) GetArgoCD(region string, environment string) (ArgoCD, error) {
 	var ret interface{}
 	var ok bool
-	if ret, ok = f.regionCache.Load(region); !ok {
-		if ret, ok = f.cache.Load(environment); !ok {
+	if ret, ok = f.cache.Load(environment); !ok {
+		if ret, ok = f.regionCache.Load(region); !ok {
 			// check and use default cd
 			if ret, ok = f.cache.Load(_default); !ok {
 				return nil, herrors.NewErrNotFound(herrors.ArgoCD, "default argo cd not found")
