@@ -1006,7 +1006,7 @@ func (c *controller) MaintainCluster(ctx context.Context, clusterID uint, enable
 		// set cluster's status to empty to let publishing continue
 		cluster.Status = common.ClusterStatusEmpty
 	}
-	cluster, err = c.clusterMgr.UpdateByID(ctx, cluster.ID, cluster)
+	_, err = c.clusterMgr.UpdateByID(ctx, cluster.ID, cluster)
 	if err != nil {
 		return err
 	}

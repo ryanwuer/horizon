@@ -577,7 +577,7 @@ func (g *clusterGitopsRepo) UpdateCluster(ctx context.Context, params *UpdateClu
 	pid := fmt.Sprintf("%v/%v/%v", g.clustersGroup.FullPath, params.Application.Name, params.Cluster)
 	var applicationYAML, pipelineYAML, baseValueYAML, envValueYAML, chartYAML []byte
 	var err1, err2, err3, err4, err5 error
-	if params.Application != nil {
+	if params.ApplicationJSONBlob != nil {
 		marshal(&applicationYAML, &err1, g.assembleApplicationValue(params.BaseParams))
 	}
 	if params.PipelineJSONBlob != nil {

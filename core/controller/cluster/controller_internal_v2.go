@@ -82,6 +82,25 @@ func (c *controller) InternalDeployV2(ctx context.Context, clusterID uint,
 		return nil, err
 	}
 
+	// update baseRegistry in cluster's git repo because image registry may be changed
+	region, err := c.regionMgr.GetRegionEntity(ctx, cluster.RegionName)
+	if err != nil {
+		return nil, err
+	}
+	err = c.clusterGitRepo.UpdateCluster(ctx, &gitrepo.UpdateClusterParams{
+		BaseParams: &gitrepo.BaseParams{
+			ClusterID:       cluster.ID,
+			Cluster:         cluster.Name,
+			TemplateRelease: tr,
+			Application:     application,
+			Environment:     cluster.EnvironmentName,
+			RegionEntity:    region,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	updatePRStatus := func(pState prmodels.PipelineStatus, revision string) error {
 		if err = c.prMgr.PipelineRun.UpdateStatusByID(ctx, pr.ID, pState); err != nil {
 			log.Errorf(ctx, "UpdateStatusByID error, pr = %d, status = %s, err = %v",
