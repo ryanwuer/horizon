@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/horizoncd/horizon/core/common"
 	herrors "github.com/horizoncd/horizon/core/errors"
@@ -82,23 +83,21 @@ func (c *controller) InternalDeployV2(ctx context.Context, clusterID uint,
 		return nil, err
 	}
 
-	// update baseRegistry in cluster's git repo because image registry may be changed
+	// update baseRegistry in cluster's git repo because image registry may be changed in the region
 	region, err := c.regionMgr.GetRegionEntity(ctx, cluster.RegionName)
 	if err != nil {
 		return nil, err
 	}
-	err = c.clusterGitRepo.UpdateCluster(ctx, &gitrepo.UpdateClusterParams{
-		BaseParams: &gitrepo.BaseParams{
-			ClusterID:       cluster.ID,
-			Cluster:         cluster.Name,
-			TemplateRelease: tr,
-			Application:     application,
-			Environment:     cluster.EnvironmentName,
-			RegionEntity:    region,
-		},
-	})
+	env, err := c.clusterGitRepo.GetEnvValue(ctx, application.Name, cluster.Name, cluster.Template)
 	if err != nil {
 		return nil, err
+	}
+	curBaseRegistry := strings.TrimPrefix(strings.TrimPrefix(region.Registry.Server, "https://"), "http://")
+	if env.BaseRegistry != curBaseRegistry {
+		env.BaseRegistry = curBaseRegistry
+		if _, err = c.clusterGitRepo.UpdateEnvValue(ctx, application.Name, cluster.Name, cluster.Template, env); err != nil {
+			return nil, err
+		}
 	}
 
 	updatePRStatus := func(pState prmodels.PipelineStatus, revision string) error {
