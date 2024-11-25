@@ -1098,7 +1098,7 @@ func (g *clusterGitopsRepo) UpdateEnvValue(ctx context.Context,
 	pid := fmt.Sprintf("%v/%v/%v", g.clustersGroup.FullPath, application, cluster)
 
 	var envYAML []byte
-	var envMap map[string]map[string]*EnvValue
+	envMap := make(map[string]map[string]*EnvValue)
 	envMap[template] = map[string]*EnvValue{
 		common.GitopsEnvValueNamespace: envValue,
 	}
