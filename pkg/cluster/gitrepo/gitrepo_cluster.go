@@ -144,6 +144,7 @@ type ClusterGitRepo interface {
 	GetConfigCommit(ctx context.Context, application, cluster string) (*ClusterCommit, error)
 	GetRepoInfo(ctx context.Context, application, cluster string) *RepoInfo
 	GetEnvValue(ctx context.Context, application, cluster, templateName string) (*EnvValue, error)
+	UpdateEnvValue(ctx context.Context, application, cluster, template string, envValue *EnvValue) (commitID string, err error)
 	// Rollback rolls gitOps branch back to a specific commit if there are diffs
 	Rollback(ctx context.Context, application, cluster, commit string) (string, error)
 	UpdateTags(ctx context.Context, application, cluster, templateName string,
@@ -1082,6 +1083,50 @@ func (g *clusterGitopsRepo) GetEnvValue(ctx context.Context,
 	}
 
 	return envMap[templateName][common.GitopsEnvValueNamespace], nil
+}
+
+func (g *clusterGitopsRepo) UpdateEnvValue(ctx context.Context,
+	application, cluster, template string, envValue *EnvValue) (commitID string, err error) {
+	const op = "cluster git repo: update env value"
+	defer wlog.Start(ctx, op).StopPrint()
+
+	currentUser, err := common.UserFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	pid := fmt.Sprintf("%v/%v/%v", g.clustersGroup.FullPath, application, cluster)
+
+	var envYAML []byte
+	var envMap map[string]map[string]*EnvValue
+	envMap[template] = map[string]*EnvValue{
+		common.GitopsEnvValueNamespace: envValue,
+	}
+	marshal(&envYAML, &err, envMap)
+	if err != nil {
+		return "", err
+	}
+
+	actions := []gitlablib.CommitAction{
+		{
+			Action:   gitlablib.FileUpdate,
+			FilePath: common.GitopsFileEnv,
+			Content:  string(envYAML),
+		},
+	}
+
+	commitMsg := angular.CommitMessage("cluster", angular.Subject{
+		Operator: currentUser.GetName(),
+		Action:   "update env value",
+		Cluster:  angular.StringPtr(cluster),
+	}, nil)
+
+	commit, err := g.gitlabLib.WriteFiles(ctx, pid, GitOpsBranch, commitMsg, nil, actions)
+	if err != nil {
+		return "", err
+	}
+
+	return commit.ID, nil
 }
 
 func (g *clusterGitopsRepo) CheckAndSyncGitOpsBranch(ctx context.Context, application, cluster, commit string) error {
