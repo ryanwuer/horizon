@@ -499,7 +499,7 @@ func Init(ctx context.Context, flags *Flags, coreConfig *config.Config) {
 	var (
 		// init controller
 		memberCtl            = memberctl.NewController(parameter)
-		applicationCtl       = applicationctl.NewController(parameter)
+		applicationCtl       = applicationctl.NewController(coreConfig, parameter)
 		envTemplateCtl       = envtemplatectl.NewController(parameter)
 		clusterCtl           = clusterctl.NewController(coreConfig, parameter)
 		prCtl                = prctl.NewController(coreConfig, parameter)

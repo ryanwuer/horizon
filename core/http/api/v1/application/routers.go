@@ -65,6 +65,10 @@ func (api *API) RegisterRoute(engine *gin.Engine) {
 			Method:      http.MethodGet,
 			Pattern:     fmt.Sprintf("/applications/:%v/pipelinestats", common.ParamApplicationID),
 			HandlerFunc: api.GetApplicationPipelineStats,
+		}, {
+			Method:      http.MethodPost,
+			Pattern:     fmt.Sprintf("/applications/:%v/upgrade", common.ParamApplicationID),
+			HandlerFunc: api.Upgrade,
 		},
 	}
 

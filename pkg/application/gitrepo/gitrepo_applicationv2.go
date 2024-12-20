@@ -15,10 +15,14 @@
 package gitrepo
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sync"
 
 	pkgcommon "github.com/horizoncd/horizon/pkg/common"
+	"github.com/horizoncd/horizon/pkg/config/template"
+	trmodels "github.com/horizoncd/horizon/pkg/templaterelease/models"
 
 	"github.com/horizoncd/horizon/core/common"
 	herrors "github.com/horizoncd/horizon/core/errors"
@@ -28,6 +32,7 @@ import (
 	"github.com/horizoncd/horizon/pkg/util/log"
 	"github.com/horizoncd/horizon/pkg/util/wlog"
 	"github.com/xanzy/go-gitlab"
+	goyaml "gopkg.in/yaml.v3"
 	"sigs.k8s.io/yaml"
 )
 
@@ -49,17 +54,30 @@ type CreateOrUpdateRequest struct {
 	TemplateConf map[string]interface{}
 }
 
+type ApplicationTemplate struct {
+	Name    string
+	Release string
+}
+
+type UpgradeValuesParam struct {
+	Application   string
+	TargetRelease *trmodels.TemplateRelease
+	BuildConfig   *template.BuildConfig
+}
+
 type GetResponse struct {
 	Manifest     map[string]interface{}
 	BuildConf    map[string]interface{}
 	TemplateConf map[string]interface{}
 }
 
+//go:generate mockgen -source=$GOFILE -destination=../../../mock/pkg/application/gitrepo/gitrepo_applicationv2_mock.go -package=mock_gitrepo
 type ApplicationGitRepo interface {
 	CreateOrUpdateApplication(ctx context.Context, application string, request CreateOrUpdateRequest) error
 	GetApplication(ctx context.Context, application, environment string) (*GetResponse, error)
 	// HardDeleteApplication hard delete an application by the specified application name
 	HardDeleteApplication(ctx context.Context, application string) error
+	Upgrade(ctx context.Context, param *UpgradeValuesParam) error
 }
 
 type appGitopsRepo struct {
@@ -296,4 +314,235 @@ func (g appGitopsRepo) HardDeleteApplication(ctx context.Context, application st
 
 	gid := fmt.Sprintf("%v/%v", g.applicationsGroup.FullPath, application)
 	return g.gitlabLib.DeleteGroup(ctx, gid)
+}
+
+func (g appGitopsRepo) Upgrade(ctx context.Context, param *UpgradeValuesParam) error {
+	const op = "git repo: upgrade application"
+	defer wlog.Start(ctx, op).StopPrint()
+	currentUser, err := common.UserFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	// 1. get projects of application
+	gid := fmt.Sprintf("%v/%v", g.applicationsGroup.FullPath, param.Application)
+	projects, err := g.gitlabLib.ListGroupProjects(ctx, gid, 1, 10)
+	if err != nil {
+		return err
+	}
+	type upgradeValueBytes struct {
+		fileName      string
+		sourceBytes   []byte
+		upgradedBytes []byte
+		err           error
+	}
+	// 2. iterate projects and upgrade
+	for _, project := range projects {
+		pid := fmt.Sprintf("%v/%v", gid, project.Name)
+		cases := []*upgradeValueBytes{
+			{
+				fileName: common.GitopsFileApplication,
+			}, {
+				fileName: common.GitopsAppPipeline,
+			}, {
+				fileName: common.GitopsFileManifest,
+			},
+		}
+
+		// 1. read files
+		var wgReadFile sync.WaitGroup
+		wgReadFile.Add(len(cases))
+		for i := range cases {
+			i := i
+			go func() {
+				defer wgReadFile.Done()
+				cases[i].sourceBytes, cases[i].err = g.gitlabLib.GetFile(ctx, pid, g.defaultBranch, cases[i].fileName)
+			}()
+		}
+		wgReadFile.Wait()
+		for _, oneCase := range cases {
+			if oneCase.fileName != common.GitopsFileManifest {
+				if oneCase.err != nil {
+					log.Errorf(ctx, "get application value file error, file = %s, err = %s",
+						oneCase.fileName, oneCase.err.Error())
+					return oneCase.err
+				}
+			} else {
+				if oneCase.err != nil {
+					if _, ok := perror.Cause(oneCase.err).(*herrors.HorizonErrNotFound); !ok {
+						log.Errorf(ctx, "get application value file error, file = %s, err = %s",
+							oneCase.fileName, oneCase.err.Error())
+						return oneCase.err
+					}
+				}
+			}
+		}
+
+		updateApplicationValue := func(sourceBytes []byte) ([]byte, error) {
+			if sourceBytes == nil {
+				return nil, nil
+			}
+
+			var (
+				inMap         map[string]interface{}
+				upgradedBytes []byte
+				err           error
+			)
+			err = yaml.Unmarshal(sourceBytes, &inMap)
+			if err != nil {
+				return nil, perror.Wrapf(herrors.ErrParamInvalid,
+					"yaml Unmarshal err, file = %s, err = %s", common.GitopsFileApplication, err.Error())
+			}
+			// convert params to envs
+			func() {
+				appMap, ok := inMap["app"].(map[string]interface{})
+				if !ok {
+					return
+				}
+				paramsMap, ok := appMap["params"].(map[string]interface{})
+				if ok {
+					var envsArray []map[string]interface{}
+					for k, v := range paramsMap {
+						// v could be int, convert to string
+						strV := fmt.Sprintf("%v", v)
+						envsArray = append(envsArray, map[string]interface{}{
+							"name":  k,
+							"value": strV,
+						})
+					}
+					delete(appMap, "params")
+					appMap["envs"] = envsArray
+				}
+			}()
+			marshal(&upgradedBytes, &err, &inMap)
+			return upgradedBytes, err
+		}
+		updatePipelineValue := func(sourceBytes []byte) ([]byte, error) {
+			if sourceBytes == nil {
+				return nil, nil
+			}
+
+			var (
+				inMap         map[string]interface{}
+				upgradedBytes []byte
+				err           error
+			)
+			err = yaml.Unmarshal(sourceBytes, &inMap)
+			if err != nil {
+				return nil, perror.Wrapf(herrors.ErrParamInvalid,
+					"yaml Unmarshal err, file = %s, err = %s", common.GitopsAppPipeline, err.Error())
+			}
+			antScript, ok := inMap["buildxml"]
+			if !ok {
+				return nil, perror.Wrapf(herrors.ErrParamInvalid,
+					"value parent err, file = %s", common.GitopsFilePipeline)
+			}
+			retMap := map[string]interface{}{
+				"buildInfo": map[string]interface{}{
+					"buildTool": "ant",
+					"buildxml":  antScript,
+				},
+				"buildType":   "netease-normal",
+				"environment": param.BuildConfig.Environment,
+				"language":    param.BuildConfig.Language,
+			}
+			marshal(&upgradedBytes, &err, &retMap)
+			return upgradedBytes, err
+		}
+		assembleManifest := func() ([]byte, error) {
+			var (
+				upgradedBytes []byte
+				err           error
+			)
+			marshal(&upgradedBytes, &err, &pkgcommon.Manifest{Version: common.MetaVersion2})
+			if err != nil {
+				log.Errorf(ctx, "marshal manifest error, err = %s", err.Error())
+			}
+			return upgradedBytes, nil
+		}
+
+		// 2. upgrade value bytes
+		var wgUpdateValue sync.WaitGroup
+		wgUpdateValue.Add(len(cases))
+		for i := range cases {
+			i := i
+			switch cases[i].fileName {
+			case common.GitopsFileManifest:
+				go func() {
+					defer wgUpdateValue.Done()
+					cases[i].upgradedBytes, _ = assembleManifest()
+				}()
+			case common.GitopsAppPipeline:
+				go func() {
+					defer wgUpdateValue.Done()
+					cases[i].upgradedBytes, cases[i].err = updatePipelineValue(cases[i].sourceBytes)
+				}()
+			case common.GitopsFileApplication:
+				go func() {
+					defer wgUpdateValue.Done()
+					cases[i].upgradedBytes, cases[i].err = updateApplicationValue(cases[i].sourceBytes)
+				}()
+			}
+		}
+		wgUpdateValue.Wait()
+
+		// 3. write files
+		var gitActions []gitlablib.CommitAction
+		for _, oneCase := range cases {
+			if oneCase.fileName != common.GitopsFileManifest {
+				if oneCase.err != nil {
+					return oneCase.err
+				}
+				if oneCase.sourceBytes != nil {
+					gitActions = append(gitActions, gitlablib.CommitAction{
+						Action:   gitlablib.FileUpdate,
+						FilePath: oneCase.fileName,
+						Content:  string(oneCase.upgradedBytes),
+					})
+				}
+			} else {
+				if oneCase.err != nil {
+					gitActions = append(gitActions, gitlablib.CommitAction{
+						Action:   gitlablib.FileCreate,
+						FilePath: oneCase.fileName,
+						Content:  string(oneCase.upgradedBytes),
+					})
+				} else {
+					gitActions = append(gitActions, gitlablib.CommitAction{
+						Action:   gitlablib.FileUpdate,
+						FilePath: oneCase.fileName,
+						Content:  string(oneCase.upgradedBytes),
+					})
+				}
+			}
+		}
+		commitMsg := angular.CommitMessage("application", angular.Subject{
+			Operator: currentUser.GetName(),
+			Action:   "upgrade application",
+		}, struct {
+			TargetTemplate ApplicationTemplate `json:"targetTemplate"`
+		}{
+			TargetTemplate: ApplicationTemplate{
+				Name:    param.TargetRelease.TemplateName,
+				Release: param.TargetRelease.Name,
+			},
+		})
+		_, err := g.gitlabLib.WriteFiles(ctx, pid, g.defaultBranch, commitMsg, nil, gitActions)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func marshal(b *[]byte, err *error, data interface{}) {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	encoder := goyaml.NewEncoder(buf)
+	encoder.SetIndent(2)
+	*err = encoder.Encode(data)
+	if (*err) != nil {
+		*err = perror.Wrap(herrors.ErrParamInvalid, (*err).Error())
+	} else {
+		*b = buf.Bytes()
+	}
 }
