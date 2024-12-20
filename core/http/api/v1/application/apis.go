@@ -352,3 +352,32 @@ func (a *API) GetApplicationPipelineStats(c *gin.Context) {
 		Items: pipelineStats,
 	})
 }
+
+func (a *API) Upgrade(c *gin.Context) {
+	const op = "application: upgrade"
+	idStr := c.Param(common.ParamApplicationID)
+	appID, err := strconv.ParseUint(idStr, 10, 0)
+	if err != nil {
+		err = perror.Wrap(err, "failed to parse application id")
+		log.WithFiled(c, "op", op).Errorf(err.Error())
+		response.AbortWithRPCError(c, rpcerror.ParamError.WithErrMsg("invalid application id"))
+		return
+	}
+
+	err = a.applicationCtl.Upgrade(c, uint(appID))
+	if err != nil {
+		err = perror.Wrap(err, "failed to upgrade application")
+		if _, ok := perror.Cause(err).(*herrors.HorizonErrNotFound); ok {
+			response.AbortWithRPCError(c, rpcerror.NotFoundError.WithErrMsg(err.Error()))
+			return
+		}
+		if perror.Cause(err) == herrors.ErrParamInvalid {
+			response.AbortWithRPCError(c, rpcerror.ParamError.WithErrMsg(err.Error()))
+			return
+		}
+		log.WithFiled(c, "op", op).Errorf(err.Error())
+		response.AbortWithRPCError(c, rpcerror.InternalError.WithErrMsg(err.Error()))
+		return
+	}
+	response.Success(c)
+}

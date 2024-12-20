@@ -370,7 +370,7 @@ func Test(t *testing.T) {
 		ApplicationGitRepo:   applicationGitRepo,
 		TemplateSchemaGetter: templateSchemaGetter,
 	}
-	c = NewController(params)
+	c = NewController(nil, params)
 
 	group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
 		Name: "ABC",
@@ -534,7 +534,7 @@ func TestV2(t *testing.T) {
 		ApplicationGitRepo:   applicationGitRepo,
 		TemplateSchemaGetter: templateSchemaGetter,
 	}
-	c := NewController(params)
+	c := NewController(nil, params)
 	group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
 		Name: "cde",
 		Path: "cde",
@@ -681,7 +681,7 @@ func TestListUserApplication(t *testing.T) {
 		applications = append(applications, application)
 	}
 
-	c = NewController(&param.Param{
+	c = NewController(nil, &param.Param{
 		Manager:  manager,
 		GroupSvc: groupservice.NewService(manager),
 	})

@@ -77,3 +77,17 @@ func (mr *MockApplicationGitRepo2MockRecorder) HardDeleteApplication(ctx, applic
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HardDeleteApplication", reflect.TypeOf((*MockApplicationGitRepo2)(nil).HardDeleteApplication), ctx, application)
 }
+
+// Upgrade mocks base method.
+func (m *MockApplicationGitRepo2) Upgrade(ctx context.Context, param *gitrepo.UpgradeValuesParam) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Upgrade", ctx, param)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Upgrade indicates an expected call of Upgrade.
+func (mr *MockApplicationGitRepo2MockRecorder) Upgrade(ctx, param interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockApplicationGitRepo2)(nil).Upgrade), ctx, param)
+}

@@ -1472,9 +1472,11 @@ func (g *clusterGitopsRepo) UpgradeCluster(ctx context.Context,
 			if ok {
 				var envsArray []map[string]interface{}
 				for k, v := range paramsMap {
+					// v could be int, convert to string
+					strV := fmt.Sprintf("%v", v)
 					envsArray = append(envsArray, map[string]interface{}{
 						"name":  k,
-						"value": v,
+						"value": strV,
 					})
 				}
 				delete(appMap, "params")

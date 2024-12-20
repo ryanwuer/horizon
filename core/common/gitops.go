@@ -24,6 +24,7 @@ const (
 	GitopsFileEnv            = "system/env.yaml"
 	GitopsFileRestart        = "system/restart.yaml"
 	GitopsFilePipeline       = "pipeline/pipeline.yaml"
+	GitopsAppPipeline        = "pipeline.yaml"
 	GitopsFilePipelineOutput = "pipeline/pipeline-output.yaml"
 	GitopsFileManifest       = "manifest.yaml"
 

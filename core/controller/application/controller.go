@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/horizoncd/horizon/core/common"
+	"github.com/horizoncd/horizon/core/config"
 	"github.com/horizoncd/horizon/core/controller/build"
 	herrors "github.com/horizoncd/horizon/core/errors"
 	"github.com/horizoncd/horizon/lib/q"
@@ -31,6 +32,7 @@ import (
 	applicationregionmanager "github.com/horizoncd/horizon/pkg/applicationregion/manager"
 	codemodels "github.com/horizoncd/horizon/pkg/cluster/code"
 	clustermanager "github.com/horizoncd/horizon/pkg/cluster/manager"
+	"github.com/horizoncd/horizon/pkg/config/template"
 	perror "github.com/horizoncd/horizon/pkg/errors"
 	eventmodels "github.com/horizoncd/horizon/pkg/event/models"
 	eventservice "github.com/horizoncd/horizon/pkg/event/service"
@@ -81,45 +83,49 @@ type Controller interface {
 	// GetApplicationPipelineStats return pipeline stats about an application
 	GetApplicationPipelineStats(ctx context.Context, applicationID uint, cluster string, pageNumber, pageSize int) (
 		[]*pipelinemodels.PipelineStats, int64, error)
+
+	Upgrade(ctx context.Context, id uint) error
 }
 
 type controller struct {
-	applicationGitRepo   gitrepo.ApplicationGitRepo
-	templateSchemaGetter templateschema.Getter
-	applicationMgr       applicationmanager.Manager
-	applicationSvc       applicationservice.Service
-	groupMgr             groupmanager.Manager
-	groupSvc             groupsvc.Service
-	templateReleaseMgr   trmanager.Manager
-	clusterMgr           clustermanager.Manager
-	userSvc              usersvc.Service
-	memberManager        membermanager.Manager
-	eventSvc             eventservice.Service
-	tagMgr               tagmanager.Manager
-	applicationRegionMgr applicationregionmanager.Manager
-	pipelinemanager      pipelinemanager.Manager
-	buildSchema          *build.Schema
+	applicationGitRepo    gitrepo.ApplicationGitRepo
+	templateSchemaGetter  templateschema.Getter
+	applicationMgr        applicationmanager.Manager
+	applicationSvc        applicationservice.Service
+	groupMgr              groupmanager.Manager
+	groupSvc              groupsvc.Service
+	templateReleaseMgr    trmanager.Manager
+	clusterMgr            clustermanager.Manager
+	userSvc               usersvc.Service
+	memberManager         membermanager.Manager
+	eventSvc              eventservice.Service
+	tagMgr                tagmanager.Manager
+	applicationRegionMgr  applicationregionmanager.Manager
+	pipelinemanager       pipelinemanager.Manager
+	buildSchema           *build.Schema
+	templateUpgradeMapper template.UpgradeMapper
 }
 
 var _ Controller = (*controller)(nil)
 
-func NewController(param *param.Param) Controller {
+func NewController(config *config.Config, param *param.Param) Controller {
 	return &controller{
-		applicationGitRepo:   param.ApplicationGitRepo,
-		templateSchemaGetter: param.TemplateSchemaGetter,
-		applicationMgr:       param.ApplicationMgr,
-		applicationSvc:       param.ApplicationSvc,
-		groupMgr:             param.GroupMgr,
-		groupSvc:             param.GroupSvc,
-		templateReleaseMgr:   param.TemplateReleaseMgr,
-		clusterMgr:           param.ClusterMgr,
-		userSvc:              param.UserSvc,
-		memberManager:        param.MemberMgr,
-		eventSvc:             param.EventSvc,
-		tagMgr:               param.TagMgr,
-		applicationRegionMgr: param.ApplicationRegionMgr,
-		pipelinemanager:      param.PipelineMgr,
-		buildSchema:          param.BuildSchema,
+		applicationGitRepo:    param.ApplicationGitRepo,
+		templateSchemaGetter:  param.TemplateSchemaGetter,
+		applicationMgr:        param.ApplicationMgr,
+		applicationSvc:        param.ApplicationSvc,
+		groupMgr:              param.GroupMgr,
+		groupSvc:              param.GroupSvc,
+		templateReleaseMgr:    param.TemplateReleaseMgr,
+		clusterMgr:            param.ClusterMgr,
+		userSvc:               param.UserSvc,
+		memberManager:         param.MemberMgr,
+		eventSvc:              param.EventSvc,
+		tagMgr:                param.TagMgr,
+		applicationRegionMgr:  param.ApplicationRegionMgr,
+		pipelinemanager:       param.PipelineMgr,
+		buildSchema:           param.BuildSchema,
+		templateUpgradeMapper: config.TemplateUpgradeMapper,
 	}
 }
 
@@ -857,4 +863,45 @@ func (c *controller) GetApplicationPipelineStats(ctx context.Context, applicatio
 	}
 
 	return c.pipelinemanager.ListPipelineStats(ctx, app.Name, cluster, pageNumber, pageSize)
+}
+
+func (c *controller) Upgrade(ctx context.Context, id uint) error {
+	const op = "cluster controller: upgrade to v2"
+	defer wlog.Start(ctx, op).StopPrint()
+
+	application, err := c.applicationMgr.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// 2. match target template
+	targetTemplate, ok := c.templateUpgradeMapper[application.Template]
+	if !ok {
+		return perror.Wrapf(herrors.ErrParamInvalid,
+			"template %s does not support upgrade", application.Template)
+	}
+	targetRelease, err := c.templateReleaseMgr.GetByTemplateNameAndRelease(ctx,
+		targetTemplate.Name, targetTemplate.Release)
+	if err != nil {
+		return err
+	}
+
+	// 3. upgrade git repo files to v2
+	err = c.applicationGitRepo.Upgrade(ctx, &gitrepo.UpgradeValuesParam{
+		Application:   application.Name,
+		TargetRelease: targetRelease,
+		BuildConfig:   &targetTemplate.BuildConfig,
+	})
+	if err != nil {
+		return err
+	}
+
+	// 4. update template in db
+	application.Template = targetRelease.TemplateName
+	application.TemplateRelease = targetRelease.Name
+	_, err = c.applicationMgr.UpdateByID(ctx, id, application)
+	if err != nil {
+		return err
+	}
+	return nil
 }
