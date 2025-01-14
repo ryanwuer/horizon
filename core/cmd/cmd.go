@@ -590,18 +590,20 @@ func Init(ctx context.Context, flags *Flags, coreConfig *config.Config) {
 	)
 
 	// start jobs
-	cleaner := clean.New(coreConfig.Clean, manager)
-	autoFreeJob := func(ctx context.Context) {
-		autofree.Run(ctx, &coreConfig.AutoFreeConfig, manager.UserMgr, clusterCtl, prCtl)
+	if coreConfig.JobConfig.Enabled {
+		cleaner := clean.New(coreConfig.Clean, manager)
+		autoFreeJob := func(ctx context.Context) {
+			autofree.Run(ctx, &coreConfig.AutoFreeConfig, manager.UserMgr, clusterCtl, prCtl)
+		}
+		eventHandlerJob, eventHandlerSvc := eventhandler.New(ctx, coreConfig.EventHandlerConfig, manager)
+		webhookJob, _ := jobwebhook.New(ctx, eventHandlerSvc, coreConfig.WebhookConfig, manager)
+		grafanaSyncJob := func(ctx context.Context) {
+			grafanasync.Run(ctx, coreConfig, manager, client)
+		}
+		k8seventJob := k8sevent.New(coreConfig.KubernetesEvent, regionInformers, manager, mysqlDB)
+		go jobs.Run(ctx, &coreConfig.JobConfig, eventHandlerJob, webhookJob,
+			k8seventJob.Run, cleaner.Run, autoFreeJob, grafanaSyncJob)
 	}
-	eventHandlerJob, eventHandlerSvc := eventhandler.New(ctx, coreConfig.EventHandlerConfig, manager)
-	webhookJob, _ := jobwebhook.New(ctx, eventHandlerSvc, coreConfig.WebhookConfig, manager)
-	grafanaSyncJob := func(ctx context.Context) {
-		grafanasync.Run(ctx, coreConfig, manager, client)
-	}
-	k8seventJob := k8sevent.New(coreConfig.KubernetesEvent, regionInformers, manager, mysqlDB)
-	go jobs.Run(ctx, &coreConfig.JobConfig, eventHandlerJob, webhookJob,
-		k8seventJob.Run, cleaner.Run, autoFreeJob, grafanaSyncJob)
 
 	// init server
 	r := gin.New()

@@ -16,6 +16,9 @@ package job
 
 type Config struct {
 
+	// Enabled is the flag to enable the job
+	Enabled bool `yaml:"enabled"`
+
 	// LockName is the name of the lock resource
 	LockName string `yaml:"lockName"`
 
