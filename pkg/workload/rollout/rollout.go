@@ -228,6 +228,8 @@ func (r *rollout) GetSteps(node *v1alpha1.ResourceNode, client *kube.Client) (*w
 	for _, step := range instance.Spec.Strategy.Canary.Steps {
 		if step.SetWeight != nil {
 			replicasList = append(replicasList, int(math.Ceil(float64(*step.SetWeight)/100*float64(replicasTotal))))
+		} else if step.SetReplica != nil {
+			replicasList = append(replicasList, int(*step.SetReplica))
 		}
 	}
 
@@ -247,7 +249,8 @@ func (r *rollout) GetSteps(node *v1alpha1.ResourceNode, client *kube.Client) (*w
 		index := float64(*instance.Status.CurrentStepIndex)
 		index = math.Min(index, float64(len(instance.Spec.Strategy.Canary.Steps)))
 		for i := 0; i < int(index); i++ {
-			if instance.Spec.Strategy.Canary.Steps[i].SetWeight != nil {
+			if instance.Spec.Strategy.Canary.Steps[i].SetWeight != nil ||
+				instance.Spec.Strategy.Canary.Steps[i].SetReplica != nil {
 				stepIndex++
 			}
 		}
