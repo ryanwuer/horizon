@@ -332,6 +332,8 @@ func getStep(rollout *rolloutsV1alpha1.Rollout) *Step {
 	for _, step := range rollout.Spec.Strategy.Canary.Steps {
 		if step.SetWeight != nil {
 			replicasList = append(replicasList, int(math.Ceil(float64(*step.SetWeight)/100*float64(replicasTotal))))
+		} else if step.SetReplica != nil {
+			replicasList = append(replicasList, int(*step.SetReplica))
 		}
 	}
 
@@ -351,7 +353,8 @@ func getStep(rollout *rolloutsV1alpha1.Rollout) *Step {
 		index := float64(*rollout.Status.CurrentStepIndex)
 		index = math.Min(index, float64(len(rollout.Spec.Strategy.Canary.Steps)))
 		for i := 0; i < int(index); i++ {
-			if rollout.Spec.Strategy.Canary.Steps[i].SetWeight != nil {
+			if rollout.Spec.Strategy.Canary.Steps[i].SetWeight != nil ||
+				rollout.Spec.Strategy.Canary.Steps[i].SetReplica != nil {
 				stepIndex++
 			}
 		}

@@ -314,6 +314,21 @@ func (mr *MockClusterGitRepoMockRecorder) UpdateCluster(ctx, params interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCluster", reflect.TypeOf((*MockClusterGitRepo)(nil).UpdateCluster), ctx, params)
 }
 
+// UpdateEnvValue mocks base method.
+func (m *MockClusterGitRepo) UpdateEnvValue(ctx context.Context, application, cluster, template string, envValue *gitrepo.EnvValue) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEnvValue", ctx, application, cluster, template, envValue)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateEnvValue indicates an expected call of UpdateEnvValue.
+func (mr *MockClusterGitRepoMockRecorder) UpdateEnvValue(ctx, application, cluster, template, envValue interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnvValue", reflect.TypeOf((*MockClusterGitRepo)(nil).UpdateEnvValue), ctx, application, cluster, template, envValue)
+}
+
 // UpdatePipelineOutput mocks base method.
 func (m *MockClusterGitRepo) UpdatePipelineOutput(ctx context.Context, application, cluster, template string, pipelineOutput interface{}) (string, error) {
 	m.ctrl.T.Helper()

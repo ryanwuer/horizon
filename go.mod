@@ -61,6 +61,7 @@ require (
 )
 
 replace (
+	github.com/argoproj/argo-rollouts => github.com/moshuipan/argo-rollouts v1.0.7
 	k8s.io/api => k8s.io/api v0.20.10
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.20.10
 	k8s.io/apimachinery => k8s.io/apimachinery v0.20.10

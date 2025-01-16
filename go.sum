@@ -252,8 +252,6 @@ github.com/aphistic/golf v0.0.0-20180712155816-02c07f170c5a/go.mod h1:3NqKYiepwy
 github.com/aphistic/sweet v0.2.0/go.mod h1:fWDlIh/isSE9n6EPsRmC0det+whmX6dJid3stzu0Xys=
 github.com/argoproj/argo-cd v1.8.7 h1:CkIu8p/gcTY/fOZWM2tHuSCIAV2HggXjJftrT1IIT3k=
 github.com/argoproj/argo-cd v1.8.7/go.mod h1:tqFZW5Lr9KBCDsvOaE5Fh8M1eJ1ThvR58pyyLv8Zqvs=
-github.com/argoproj/argo-rollouts v1.0.7 h1:cGwkpPN/T40PRWqBayVcTCyfkypxYsGSUHDCQVenrAk=
-github.com/argoproj/argo-rollouts v1.0.7/go.mod h1:lSK1l0H/67x3fnBt8GtfQUPJx8DoD9PhchzmDC6nWMI=
 github.com/argoproj/gitops-engine v0.2.2/go.mod h1:OxXp8YaT73rw9gEBnGBWg55af80nkV/uIjWCbJu1Nw0=
 github.com/argoproj/gitops-engine v0.3.3 h1:zRNwKRj3h+EBpciy/+Eyo4vW2GTG3UG4HXAdWn0mQRI=
 github.com/argoproj/gitops-engine v0.3.3/go.mod h1:IBHhAkqlC+3r/wBWUitWSidQhPzlLoSTWp2htq3dyQk=
@@ -1308,6 +1306,8 @@ github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826/go.mod h1:TaXosZuwd
 github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe/go.mod h1:wL8QJuTMNUDYhXwkmfOly8iTdp5TEcJFWZD2D7SIkUc=
 github.com/moricho/tparallel v0.2.1/go.mod h1:fXEIZxG2vdfl0ZF8b42f5a78EhjjD5mX8qUplsoSU4k=
 github.com/morikuni/aec v1.0.0/go.mod h1:BbKIizmSmc5MMPqRYbxO4ZU0S0+P200+tUnFx7PXmsc=
+github.com/moshuipan/argo-rollouts v1.0.7 h1:r1E8vDYYq5Ze8Njr3RAqGrqvmEb2BG+uHiUUG0uUWuY=
+github.com/moshuipan/argo-rollouts v1.0.7/go.mod h1:lSK1l0H/67x3fnBt8GtfQUPJx8DoD9PhchzmDC6nWMI=
 github.com/mozilla/tls-observatory v0.0.0-20190404164649-a3c1b6cfecfd/go.mod h1:SrKMQvPiws7F7iqYp8/TX+IhxCYhzr6N/1yb8cwHsGk=
 github.com/mozilla/tls-observatory v0.0.0-20200317151703-4fa42e1c2dee/go.mod h1:SrKMQvPiws7F7iqYp8/TX+IhxCYhzr6N/1yb8cwHsGk=
 github.com/mozillazg/go-pinyin v0.18.0 h1:hQompXO23/0ohH8YNjvfsAITnCQImCiR/Fny8EhIeW0=
