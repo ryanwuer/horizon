@@ -61,6 +61,14 @@ var (
 		Group: "",
 		Kind:  "Pod",
 	}
+	GKReplicaSet = schema.GroupKind{
+		Group: "apps",
+		Kind:  "ReplicaSet",
+	}
+	GKResourceBinding = schema.GroupKind{
+		Group: "work.karmada.io",
+		Kind:  "ResourceBinding",
+	}
 )
 
 const (
@@ -203,11 +211,18 @@ func (c *cd) GetResourceTree(ctx context.Context,
 	}
 
 	resourceTree := make([]ResourceNode, 0, len(resourceTreeInArgo.Nodes))
+	// pod ability
 	pd, err := workload.GetAbility(GKPod)
 	if err != nil {
 		return nil, err
 	}
 	gt := getter.New(pd)
+	// replicaSet ability
+	rsd, err := workload.GetAbility(GKReplicaSet)
+	if err != nil {
+		return nil, err
+	}
+	rst := getter.New(rsd)
 	for _, node := range resourceTreeInArgo.Nodes {
 		n := ResourceNode{ResourceNode: node}
 		if n.Kind == "Pod" {
@@ -230,8 +245,44 @@ func (c *cd) GetResourceTree(ctx context.Context,
 			}
 			t := Compact(podDetail)
 			n.PodDetail = &t
+			resourceTree = append(resourceTree, n)
+		} else if n.Kind == GKResourceBinding.Kind && n.Group == GKResourceBinding.Group {
+			// compatible with the Karmada(https://karmada.io/) that pods are not in argo's resource tree
+			if len(n.ParentRefs) == 1 && n.ParentRefs[0].Kind == "ReplicaSet" {
+				rs := n.ParentRefs[0]
+				var podDetails []corev1.Pod
+				err = c.informerFactories.GetDynamicFactory(params.RegionEntity.ID,
+					func(factory dynamicinformer.DynamicSharedInformerFactory) error {
+						podDetails, err = rst.ListPods(&applicationV1alpha1.ResourceNode{
+							ResourceRef: rs,
+						}, factory)
+						if err != nil {
+							return err
+						}
+						return nil
+					})
+				if err != nil {
+					log.Errorf(ctx, "failed to get pod details: %v", err)
+					continue
+				}
+				for _, podDetail := range podDetails {
+					t := Compact(podDetail)
+					resourceTree = append(resourceTree, ResourceNode{
+						ResourceNode: applicationV1alpha1.ResourceNode{
+							ResourceRef: applicationV1alpha1.ResourceRef{
+								Kind: podDetail.Kind,
+								Name: podDetail.Name,
+								UID:  string(podDetail.UID),
+							},
+							ParentRefs: n.ParentRefs,
+						},
+						PodDetail: &t,
+					})
+				}
+			}
+		} else {
+			resourceTree = append(resourceTree, n)
 		}
-		resourceTree = append(resourceTree, n)
 	}
 
 	return resourceTree, nil

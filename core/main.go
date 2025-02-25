@@ -34,6 +34,7 @@ import (
 	_ "github.com/horizoncd/horizon/pkg/workload/deployment"
 	_ "github.com/horizoncd/horizon/pkg/workload/kservice"
 	_ "github.com/horizoncd/horizon/pkg/workload/pod"
+	_ "github.com/horizoncd/horizon/pkg/workload/replicaset"
 	_ "github.com/horizoncd/horizon/pkg/workload/rollout"
 	_ "github.com/horizoncd/horizon/pkg/workload/statefulset"
 )
