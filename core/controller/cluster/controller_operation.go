@@ -29,6 +29,7 @@ import (
 	"github.com/horizoncd/horizon/pkg/cd"
 	codemodels "github.com/horizoncd/horizon/pkg/cluster/code"
 	"github.com/horizoncd/horizon/pkg/cluster/gitrepo"
+	clustermodels "github.com/horizoncd/horizon/pkg/cluster/models"
 	cmodels "github.com/horizoncd/horizon/pkg/cluster/models"
 	"github.com/horizoncd/horizon/pkg/cluster/tekton"
 	perror "github.com/horizoncd/horizon/pkg/errors"
@@ -107,8 +108,10 @@ func (c *controller) Restart(ctx context.Context, clusterID uint) (_ *Pipelineru
 	}
 
 	// 5. record event
+	extraBytes, _ := json.Marshal(&clustermodels.ClusterEventExtra{Pipelinerun: prCreated})
+	extraString := string(extraBytes)
 	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceCluster, cluster.ID,
-		eventmodels.ClusterRestarted, nil)
+		eventmodels.ClusterRestarted, &extraString)
 
 	return &PipelinerunIDResponse{
 		PipelinerunID: prCreated.ID,
@@ -423,8 +426,10 @@ func (c *controller) Rollback(ctx context.Context,
 	}
 
 	// 10. record event
+	extraBytes, _ := json.Marshal(&clustermodels.ClusterEventExtra{Pipelinerun: prCreated})
+	extraString := string(extraBytes)
 	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceCluster, cluster.ID,
-		eventmodels.ClusterRollbacked, nil)
+		eventmodels.ClusterRollbacked, &extraString)
 
 	return &PipelinerunIDResponse{
 		PipelinerunID: prCreated.ID,
