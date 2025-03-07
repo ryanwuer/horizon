@@ -16,6 +16,7 @@ package pipelinerun
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -569,8 +570,10 @@ func (c *controller) executeRestart(ctx context.Context, application *appmodels.
 			pr.ID, prmodels.StatusOK)
 	}
 	// 5. create event
+	extraBytes, _ := json.Marshal(&clustermodels.ClusterEventExtra{Pipelinerun: pr})
+	extraString := string(extraBytes)
 	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceCluster, cluster.ID,
-		eventmodels.ClusterRestarted, nil)
+		eventmodels.ClusterRestarted, &extraString)
 	return nil
 }
 
@@ -680,8 +683,10 @@ func (c *controller) executeRollback(ctx context.Context, application *appmodels
 	}
 
 	// 9. record event
+	extraBytes, _ := json.Marshal(&clustermodels.ClusterEventExtra{Pipelinerun: pr})
+	extraString := string(extraBytes)
 	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceCluster, cluster.ID,
-		eventmodels.ClusterRollbacked, nil)
+		eventmodels.ClusterRollbacked, &extraString)
 	return nil
 }
 

@@ -15,6 +15,7 @@
 package models
 
 import (
+	prmodels "github.com/horizoncd/horizon/pkg/pr/models"
 	"github.com/horizoncd/horizon/pkg/server/global"
 	"github.com/horizoncd/horizon/pkg/tag/models"
 )
@@ -50,4 +51,8 @@ type ClusterWithRegion struct {
 	*Cluster
 
 	RegionDisplayName string
+}
+
+type ClusterEventExtra struct {
+	Pipelinerun *prmodels.Pipelinerun `json:"pipelinerun"`
 }

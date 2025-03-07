@@ -32,7 +32,7 @@ const (
 	ClusterBuildDeployed   string = "clusters_builddeployed"
 	ClusterDeployed        string = "clusters_deployed"
 	ClusterRollbacked      string = "clusters_rollbacked"
-	ClusterRestarted       string = "clsuters_restarted"
+	ClusterRestarted       string = "clusters_restarted"
 	ClusterPodsRescheduled string = "clusters_rescheduled"
 	ClusterUpdated         string = "clusters_updated"
 	ClusterFreed           string = "clusters_freed"

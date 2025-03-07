@@ -16,6 +16,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	userauth "github.com/horizoncd/horizon/pkg/authentication/user"
 	"github.com/horizoncd/horizon/pkg/cd"
 	"github.com/horizoncd/horizon/pkg/cluster/gitrepo"
+	clustermodels "github.com/horizoncd/horizon/pkg/cluster/models"
 	perror "github.com/horizoncd/horizon/pkg/errors"
 	eventmodels "github.com/horizoncd/horizon/pkg/event/models"
 	prmodels "github.com/horizoncd/horizon/pkg/pr/models"
@@ -213,8 +215,10 @@ func (c *controller) InternalDeployV2(ctx context.Context, clusterID uint,
 	if pr.Action == prmodels.ActionBuildDeploy {
 		eventType = eventmodels.ClusterBuildDeployed
 	}
+	extraBytes, _ := json.Marshal(&clustermodels.ClusterEventExtra{Pipelinerun: pr})
+	extraString := string(extraBytes)
 	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceCluster, cluster.ID,
-		eventType, nil)
+		eventType, &extraString)
 
 	return &InternalDeployResponseV2{
 		PipelinerunID: pr.ID,

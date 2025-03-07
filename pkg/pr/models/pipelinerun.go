@@ -44,49 +44,49 @@ const (
 
 type Pipelinerun struct {
 	// ID pipelinerun id
-	ID uint
+	ID uint `json:"id"`
 	// ClusterID cluster id which this pipelinerun belongs to
-	ClusterID uint
+	ClusterID uint `json:"clusterID"`
 	// Action type, which can be builddeploy, deploy, restart, rollback
-	Action string
+	Action string `json:"action"`
 	// Status of this pipelinerun, which can be created, ok, failed, cancelled, unknown
-	Status string
+	Status string `json:"status"`
 	// Title of this pipelinerun
-	Title string
+	Title string `json:"title"`
 	// Description of this pipelinerun
-	Description string
+	Description string `json:"description"`
 	// GitURL the git url this pipelinerun to build with, can be empty when action is not builddeploy
-	GitURL string
+	GitURL string `json:"gitURL"`
 	// GitRef the git reference this pipelinerun to build with, can be empty when action is not builddeploy
-	GitRef string
+	GitRef string `json:"gitRef"`
 	// GitRefType the git reference type this pipelinerun to build with, can be empty when action is not builddeploy
-	GitRefType string
+	GitRefType string `json:"gitRefType"`
 	// GitCommit the git commit this pipelinerun to build with, can be empty when action is not builddeploy
-	GitCommit string
+	GitCommit string `json:"gitCommit"`
 	// ImageURL image url of this pipelinerun to build or deploy image
-	ImageURL string
+	ImageURL string `json:"imageURL"`
 	// the two commit used to compare the config difference of this pipelinerun
 	// LastConfigCommit config commit in master branch of this pipelinerun, can be empty when action is restart
-	LastConfigCommit string
+	LastConfigCommit string `json:"lastConfigCommit"`
 	// ConfigCommit config commit of this pipelinerun
-	ConfigCommit string
+	ConfigCommit string `json:"configCommit"`
 	// S3Bucket pipelinerun log and object s3 bucket
-	S3Bucket string `gorm:"column:s3_bucket"`
+	S3Bucket string `gorm:"column:s3_bucket" json:"s3Bucket"`
 	// LogObject pipelinerun's log s3 object
-	LogObject string
+	LogObject string `json:"logObject"`
 	// PrObject pipelinerun s3 object
-	PrObject string `gorm:"column:pr_object"`
+	PrObject string `gorm:"column:pr_object" json:"prObject"`
 	// StartedAt start time of this pipelinerun
-	StartedAt *time.Time
+	StartedAt *time.Time `json:"startedAt"`
 	// FinishedAt finish time of this pipelinerun
-	FinishedAt *time.Time
+	FinishedAt *time.Time `json:"finishedAt"`
 	// RollbackFrom which pipelinerun this pipelinerun rollback from
-	RollbackFrom *uint
+	RollbackFrom *uint `json:"rollbackFrom"`
 	// CIEventID event id returned from tekton-trigger EventListener
-	CIEventID string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	CreatedBy uint
+	CIEventID string    `json:"ciEventID"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	CreatedBy uint      `json:"createdBy"`
 }
 
 type PipelineBasic struct {
