@@ -16,6 +16,7 @@ package envtemplate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -24,6 +25,8 @@ import (
 	"github.com/horizoncd/horizon/pkg/application/gitrepo"
 	applicationmanager "github.com/horizoncd/horizon/pkg/application/manager"
 	envmanager "github.com/horizoncd/horizon/pkg/environment/manager"
+	eventmodels "github.com/horizoncd/horizon/pkg/event/models"
+	eventservice "github.com/horizoncd/horizon/pkg/event/service"
 	"github.com/horizoncd/horizon/pkg/param"
 	templateschema "github.com/horizoncd/horizon/pkg/templaterelease/schema"
 	"github.com/horizoncd/horizon/pkg/util/errors"
@@ -43,6 +46,7 @@ type controller struct {
 	applicationMgr       applicationmanager.Manager
 	envMgr               envmanager.Manager
 	buildSchema          *build.Schema
+	eventSvc             eventservice.Service
 }
 
 func NewController(param *param.Param) Controller {
@@ -52,11 +56,27 @@ func NewController(param *param.Param) Controller {
 		applicationMgr:       param.ApplicationMgr,
 		envMgr:               param.EnvMgr,
 		buildSchema:          param.BuildSchema,
+		eventSvc:             param.EventSvc,
 	}
 }
 func (c *controller) UpdateEnvTemplateV2(ctx context.Context, applicationID uint, env string,
-	r *UpdateEnvTemplateRequest) error {
+	r *UpdateEnvTemplateRequest) (err error) {
 	const op = "env template controller: update env templates"
+
+	// defer the event recording function
+	defer func() {
+		extraStr := ""
+		if err != nil {
+			extra := map[string]string{
+				"error": err.Error(),
+			}
+			extraBytes, _ := json.Marshal(extra)
+			extraStr = string(extraBytes)
+		}
+		// record event
+		c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceApplication, applicationID,
+			eventmodels.ApplicationUpdated, &extraStr)
+	}()
 
 	// 1. get application
 	application, err := c.applicationMgr.GetByID(ctx, applicationID)
@@ -69,11 +89,11 @@ func (c *controller) UpdateEnvTemplateV2(ctx context.Context, applicationID uint
 	if err != nil {
 		return errors.E(op, http.StatusBadRequest, err)
 	}
-	if err := jsonschema.Validate(schema.Application.JSONSchema, r.Application, false); err != nil {
+	if err = jsonschema.Validate(schema.Application.JSONSchema, r.Application, false); err != nil {
 		return errors.E(op, http.StatusBadRequest, err)
 	}
 	if c.buildSchema != nil && c.buildSchema.JSONSchema != nil && r.Pipeline != nil {
-		if err := jsonschema.Validate(c.buildSchema.JSONSchema, r.Pipeline, false); err != nil {
+		if err = jsonschema.Validate(c.buildSchema.JSONSchema, r.Pipeline, false); err != nil {
 			return errors.E(op, http.StatusBadRequest, err)
 		}
 	}
@@ -86,23 +106,39 @@ func (c *controller) UpdateEnvTemplateV2(ctx context.Context, applicationID uint
 		TemplateConf: r.Application,
 	}
 	if env == "" {
-		if err := c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq); err != nil {
+		if err = c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq); err != nil {
 			return errors.E(op, err)
 		}
 		return nil
 	}
 
 	// 3.2 check env exists
-	if err := c.checkEnvExists(ctx, env); err != nil {
+	if err = c.checkEnvExists(ctx, env); err != nil {
 		return errors.E(op, err)
 	}
 	// 4. update application env template in git repo
-	return c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq)
+	err = c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq)
+	return err
 }
 
 func (c *controller) UpdateEnvTemplate(ctx context.Context,
-	applicationID uint, env string, r *UpdateEnvTemplateRequest) error {
+	applicationID uint, env string, r *UpdateEnvTemplateRequest) (err error) {
 	const op = "env template controller: update env templates"
+
+	// defer the event recording function
+	defer func() {
+		extraStr := ""
+		if err != nil {
+			extra := map[string]string{
+				"error": err.Error(),
+			}
+			extraBytes, _ := json.Marshal(extra)
+			extraStr = string(extraBytes)
+		}
+		// record event
+		c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceApplication, applicationID,
+			eventmodels.ApplicationUpdated, &extraStr)
+	}()
 
 	// 1. get application
 	application, err := c.applicationMgr.GetByID(ctx, applicationID)
@@ -115,10 +151,10 @@ func (c *controller) UpdateEnvTemplate(ctx context.Context,
 	if err != nil {
 		return errors.E(op, http.StatusBadRequest, err)
 	}
-	if err := jsonschema.Validate(schema.Application.JSONSchema, r.Application, false); err != nil {
+	if err = jsonschema.Validate(schema.Application.JSONSchema, r.Application, false); err != nil {
 		return errors.E(op, http.StatusBadRequest, err)
 	}
-	if err := jsonschema.Validate(schema.Pipeline.JSONSchema, r.Pipeline, true); err != nil {
+	if err = jsonschema.Validate(schema.Pipeline.JSONSchema, r.Pipeline, true); err != nil {
 		return errors.E(op, http.StatusBadRequest, err)
 	}
 
@@ -129,18 +165,19 @@ func (c *controller) UpdateEnvTemplate(ctx context.Context,
 		TemplateConf: r.Application,
 	}
 	if env == "" {
-		if err := c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq); err != nil {
+		if err = c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq); err != nil {
 			return errors.E(op, err)
 		}
 		return nil
 	}
 
 	// 3.2 check env exists
-	if err := c.checkEnvExists(ctx, env); err != nil {
+	if err = c.checkEnvExists(ctx, env); err != nil {
 		return errors.E(op, err)
 	}
 	// 4. update application env template in git repo
-	return c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq)
+	err = c.applicationGitRepo.CreateOrUpdateApplication(ctx, application.Name, updateReq)
+	return err
 }
 
 func (c *controller) GetEnvTemplate(ctx context.Context,
