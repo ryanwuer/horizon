@@ -663,17 +663,20 @@ func (c *controller) CreatePipelineRun(ctx context.Context, clusterID uint,
 		return nil, err
 	}
 
-	// if checks is empty, set status to ready
-	checks, err := c.prSvc.GetCheckByResource(ctx, clusterID, common.ResourceCluster)
-	if err != nil {
-		return nil, err
-	}
-	if len(checks) == 0 {
-		pipelineRun.Status = string(prmodels.StatusReady)
-	}
+	// pipeline need to be approved, check other conditions that can help skip approval
+	if !c.pipelineConfig.DisableApproval {
+		// if checks is empty, set status to ready
+		checks, err := c.prSvc.GetCheckByResource(ctx, clusterID, common.ResourceCluster)
+		if err != nil {
+			return nil, err
+		}
+		if len(checks) == 0 {
+			pipelineRun.Status = string(prmodels.StatusReady)
+		}
 
-	if pipelineRun, err = c.prMgr.PipelineRun.Create(ctx, pipelineRun); err != nil {
-		return nil, err
+		if pipelineRun, err = c.prMgr.PipelineRun.Create(ctx, pipelineRun); err != nil {
+			return nil, err
+		}
 	}
 
 	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourcePipelinerun, pipelineRun.ID,
@@ -820,10 +823,15 @@ func (c *controller) createPipelineRun(ctx context.Context, clusterID uint,
 		return nil, perror.Wrapf(herrors.ErrParamInvalid, "unsupported action %v", r.Action)
 	}
 
+	status := string(prmodels.StatusPending)
+	if c.pipelineConfig.DisableApproval {
+		status = string(prmodels.StatusReady)
+	}
+
 	return &prmodels.Pipelinerun{
 		ClusterID:        clusterID,
 		Action:           action,
-		Status:           string(prmodels.StatusPending),
+		Status:           status,
 		Title:            title,
 		Description:      r.Description,
 		GitURL:           gitURL,

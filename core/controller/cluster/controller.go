@@ -17,6 +17,7 @@ package cluster
 import (
 	"context"
 
+	"github.com/horizoncd/horizon/pkg/config/pipeline"
 	membermanager "github.com/horizoncd/horizon/pkg/member/manager"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -170,6 +171,7 @@ type controller struct {
 	templateUpgradeMapper template.UpgradeMapper
 	collectionManager     collectionmanager.Manager
 	clusterSvc            clusterservice.Service
+	pipelineConfig        pipeline.Config
 }
 
 var _ Controller = (*controller)(nil)
@@ -214,5 +216,6 @@ func NewController(config *config.Config, param *param.Param) Controller {
 		templateUpgradeMapper: config.TemplateUpgradeMapper,
 		collectionManager:     param.CollectionMgr,
 		clusterSvc:            param.ClusterSvc,
+		pipelineConfig:        config.PipelineConfig,
 	}
 }
