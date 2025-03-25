@@ -31,6 +31,7 @@ import (
 	"github.com/horizoncd/horizon/pkg/config/job"
 	"github.com/horizoncd/horizon/pkg/config/k8sevent"
 	"github.com/horizoncd/horizon/pkg/config/oauth"
+	"github.com/horizoncd/horizon/pkg/config/pipeline"
 	"github.com/horizoncd/horizon/pkg/config/pprof"
 	"github.com/horizoncd/horizon/pkg/config/redis"
 	"github.com/horizoncd/horizon/pkg/config/server"
@@ -70,6 +71,7 @@ type Config struct {
 	KubernetesEvent        k8sevent.Config         `yaml:"kubernetesEvent"`
 	Clean                  clean.Config            `yaml:"clean"`
 	Admission              admission.Admission     `yaml:"admission"`
+	PipelineConfig         pipeline.Config         `yaml:"pipeline"`
 }
 
 func LoadConfig(configFilePath string) (*Config, error) {
