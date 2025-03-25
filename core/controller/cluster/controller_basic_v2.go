@@ -680,8 +680,11 @@ func (c *controller) CreatePipelineRun(ctx context.Context, clusterID uint,
 		return nil, err
 	}
 
-	c.eventSvc.CreateEventIgnoreError(ctx, common.ResourcePipelinerun, pipelineRun.ID,
-		eventmodels.PipelinerunCreated, nil)
+	// only create event when the pipelinerun is pending to send webhook
+	if pipelineRun.Status == string(prmodels.StatusPending) {
+		c.eventSvc.CreateEventIgnoreError(ctx, common.ResourcePipelinerun, pipelineRun.ID,
+			eventmodels.PipelinerunCreated, nil)
+	}
 
 	firstCanRollbackPipelinerun, err := c.prMgr.PipelineRun.GetFirstCanRollbackPipelinerun(ctx, pipelineRun.ClusterID)
 	if err != nil {
