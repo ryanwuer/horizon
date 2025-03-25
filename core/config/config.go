@@ -71,7 +71,7 @@ type Config struct {
 	KubernetesEvent        k8sevent.Config         `yaml:"kubernetesEvent"`
 	Clean                  clean.Config            `yaml:"clean"`
 	Admission              admission.Admission     `yaml:"admission"`
-	PipelineConfig         pipeline.Config         `yaml:"pipeline"`
+	PipelineConfig         pipeline.Config         `yaml:"pipelineConfig"`
 }
 
 func LoadConfig(configFilePath string) (*Config, error) {
