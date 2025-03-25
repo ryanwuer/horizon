@@ -663,13 +663,17 @@ func (c *controller) CreatePipelineRun(ctx context.Context, clusterID uint,
 		return nil, err
 	}
 
-	// if checks is empty, set status to ready
-	checks, err := c.prSvc.GetCheckByResource(ctx, clusterID, common.ResourceCluster)
-	if err != nil {
-		return nil, err
-	}
-	if len(checks) == 0 {
+	if c.pipelineConfig.DisableApproval {
 		pipelineRun.Status = string(prmodels.StatusReady)
+	} else {
+		// if checks is empty, set status to ready
+		checks, err := c.prSvc.GetCheckByResource(ctx, clusterID, common.ResourceCluster)
+		if err != nil {
+			return nil, err
+		}
+		if len(checks) == 0 {
+			pipelineRun.Status = string(prmodels.StatusReady)
+		}
 	}
 
 	if pipelineRun, err = c.prMgr.PipelineRun.Create(ctx, pipelineRun); err != nil {
