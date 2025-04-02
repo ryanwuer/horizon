@@ -142,6 +142,7 @@ func (c *controller) CreateClusterV2(ctx context.Context,
 		"resourceType": "cluster",
 		"clusterName":  params.Name,
 		"environment":  params.Environment,
+		"region":       params.Region,
 	}
 	if err := buildTemplateInfo.Validate(ctx,
 		c.templateSchemaGetter, templateSchemaRenderVal, c.buildSchema); err != nil {
@@ -496,6 +497,7 @@ func (c *controller) UpdateClusterV2(ctx context.Context, clusterID uint,
 		renderValues["resourceType"] = "cluster"
 		renderValues["clusterName"] = cluster.Name
 		renderValues["environment"] = environmentName
+		renderValues["region"] = regionName
 		return info.Validate(ctx, c.templateSchemaGetter, renderValues, c.buildSchema)
 	}()
 	if err != nil {

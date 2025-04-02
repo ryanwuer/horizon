@@ -138,7 +138,17 @@ func GetPod(ctx context.Context, kubeClientset kubernetes.Interface, namespace, 
 		if kubeerror.IsNotFound(err) {
 			return nil, herrors.NewErrNotFound(herrors.PodsInK8S, err.Error())
 		}
-		return nil, herrors.NewErrGetFailed(herrors.PodsInK8S, err.Error())
+		// compatible with the Karmada(https://karmada.io/)
+		// karamda-search cannot handle the request with the acceptContentType: application/vnd.kubernetes.protobuf
+		restClient := kubeClientset.CoreV1().RESTClient()
+		request := restClient.Get().Namespace(namespace).Resource("pods").Name(podName).SetHeader("Accept", "application/json")
+		err := request.Do(ctx).Into(pod)
+		if err != nil {
+			if kubeerror.IsNotFound(err) {
+				return nil, herrors.NewErrNotFound(herrors.PodsInK8S, err.Error())
+			}
+			return nil, herrors.NewErrGetFailed(herrors.PodsInK8S, err.Error())
+		}
 	}
 	return pod, nil
 }
