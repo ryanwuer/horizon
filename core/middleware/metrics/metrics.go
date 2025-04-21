@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/horizoncd/horizon/core/common"
 	middleware "github.com/horizoncd/horizon/core/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -29,6 +30,7 @@ const (
 	_handlerLabel = "handler"
 	_verbLabel    = "verb"
 	_codeLabel    = "code"
+	_callerLabel  = "caller"
 )
 
 var (
@@ -47,7 +49,7 @@ var (
 			Name: "horizon_request_total",
 			Help: "horizon request total counter.",
 		},
-		[]string{_handlerLabel, _verbLabel, _codeLabel},
+		[]string{_handlerLabel, _verbLabel, _codeLabel, _callerLabel},
 	)
 )
 
@@ -80,10 +82,13 @@ func Middleware(skippers ...middleware.Skipper) gin.HandlerFunc {
 			_handlerLabel: handler,
 			_verbLabel:    method,
 		}).Observe(latency.Seconds())
+
+		caller := common.CallerFromContext(c)
 		apiCounter.With(prometheus.Labels{
 			_handlerLabel: handler,
 			_verbLabel:    method,
 			_codeLabel:    fmt.Sprintf("%v", statusCode),
+			_callerLabel:  caller,
 		}).Inc()
 	}, skippers...)
 }

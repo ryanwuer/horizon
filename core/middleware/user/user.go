@@ -64,7 +64,7 @@ func Middleware(param *param.Param, store sessions.Store,
 	config *coreconfig.Config, skippers ...middleware.Skipper) gin.HandlerFunc {
 	return middleware.New(func(c *gin.Context) {
 		// 1. aksk auth if operator header exists
-		user, err := akskAuthn(c, config.AccessSecretKeys, param.UserMgr)
+		user, caller, err := akskAuthn(c, config.AccessSecretKeys, param.UserMgr)
 		if err != nil {
 			response.AbortWithRPCError(c, rpcerror.ForbiddenError.WithErrMsg(err.Error()))
 			return
@@ -78,6 +78,7 @@ func Middleware(param *param.Param, store sessions.Store,
 				Email:    user.Email,
 				Admin:    user.Admin,
 			})
+			c.Set(common.CallerContextKey(), caller)
 			c.Next()
 			return
 		}
@@ -128,43 +129,44 @@ func Middleware(param *param.Param, store sessions.Store,
 	}, skippers...)
 }
 
-func akskAuthn(c *gin.Context, keys authenticate.KeysConfig, userMgr usermanager.Manager) (*models.User, error) {
+func akskAuthn(c *gin.Context, keys authenticate.KeysConfig, userMgr usermanager.Manager) (*models.User, string, error) {
 	r := c.Request
 	log.Infof(c, "request url path: %v", r.URL)
 
 	operator := r.Header.Get(HTTPHeaderOperator)
 	if operator == "" {
-		return nil, nil
+		return nil, "", nil
 	}
 
 	date := r.Header.Get(HTTPHeaderDate)
 	if date == "" {
-		return nil, perror.Wrap(herrors.ErrParamInvalid, "Date Header is missing")
+		return nil, "", perror.Wrap(herrors.ErrParamInvalid, "Date Header is missing")
 	}
 	parsedTime, err := time.Parse(_timeGMT, date)
 	if err != nil {
-		return nil, perror.Wrap(herrors.ErrParamInvalid, "Invalid Date Header format")
+		return nil, "", perror.Wrap(herrors.ErrParamInvalid, "Invalid Date Header format")
 	}
 	now := time.Now()
 	duration := time.Minute * 10
 	if parsedTime.Before(now.Add(0-duration)) || parsedTime.After(now.Add(duration)) {
-		return nil, perror.Wrap(herrors.ErrParamInvalid, "The Date has expired")
+		return nil, "", perror.Wrap(herrors.ErrParamInvalid, "The Date has expired")
 	}
 
 	if err := validatingContentMD5(c, r); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	signature := r.Header.Get(HTTPHeaderSignature)
 	if signature == "" {
-		return nil, perror.Wrapf(herrors.ErrParamInvalid, "%v Header is missing", HTTPHeaderSignature)
+		return nil, "", perror.Wrapf(herrors.ErrParamInvalid, "%v Header is missing", HTTPHeaderSignature)
 	}
 	strs := strings.Split(signature, ":")
 	if len(strs) != 2 || strings.TrimSpace(strs[0]) == "" || strings.TrimSpace(strs[1]) == "" {
-		return nil, perror.Wrapf(herrors.ErrParamInvalid, "Invalid %v Header format", HTTPHeaderSignature)
+		return nil, "", perror.Wrapf(herrors.ErrParamInvalid, "Invalid %v Header format", HTTPHeaderSignature)
 	}
 
 	var key *authenticate.Key
+	var caller string
 	accessKey := strings.TrimSpace(strs[0])
 	secretKey := ""
 	for user, ks := range keys {
@@ -174,6 +176,7 @@ func akskAuthn(c *gin.Context, keys authenticate.KeysConfig, userMgr usermanager
 				secretKey = ks[i].SecretKey
 				found = true
 				key = ks[i]
+				caller = user
 				break
 			}
 		}
@@ -183,26 +186,26 @@ func akskAuthn(c *gin.Context, keys authenticate.KeysConfig, userMgr usermanager
 		}
 	}
 	if secretKey == "" {
-		return nil, perror.Wrapf(herrors.ErrParamInvalid, "invalid access key")
+		return nil, "", perror.Wrapf(herrors.ErrParamInvalid, "invalid access key")
 	}
 
 	actualSignature := signature
 	expectSignature := SignRequest(c, r, accessKey, secretKey)
 	if actualSignature != expectSignature {
-		return nil, perror.Wrapf(herrors.ErrParamInvalid, "signature verify failed on %v Header", HTTPHeaderSignature)
+		return nil, "", perror.Wrapf(herrors.ErrParamInvalid, "signature verify failed on %v Header", HTTPHeaderSignature)
 	}
 
 	u, err := userMgr.GetUserByIDP(c, operator, key.IDP)
 	if err != nil {
-		return nil, perror.Wrapf(herrors.NewErrGetFailed(herrors.UserInDB, "unauthorized"),
+		return nil, "", perror.Wrapf(herrors.NewErrGetFailed(herrors.UserInDB, "unauthorized"),
 			"failed to get user with email = %v and idp = %v: err = %v", operator, key.IDP, err)
 	}
 	if u == nil {
-		return nil, perror.Wrapf(herrors.NewErrNotFound(herrors.UserInDB, "unauthorized"),
+		return nil, "", perror.Wrapf(herrors.NewErrNotFound(herrors.UserInDB, "unauthorized"),
 			"user with email = %v and idp = %v not found", operator, key.IDP)
 	}
 
-	return u, nil
+	return u, caller, nil
 }
 
 func validatingContentMD5(ctx context.Context, r *http.Request) error {
