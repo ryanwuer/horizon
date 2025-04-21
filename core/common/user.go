@@ -32,7 +32,8 @@ const (
 )
 
 const (
-	contextUserKey = "contextUser"
+	contextUserKey   = "contextUser"
+	contextCallerKey = "contextCaller"
 
 	AuthorizationHeaderKey = "Authorization"
 	TokenHeaderValuePrefix = "Bearer"
@@ -42,12 +43,24 @@ func UserContextKey() string {
 	return contextUserKey
 }
 
+func CallerContextKey() string {
+	return contextCallerKey
+}
+
 func UserFromContext(ctx context.Context) (user.User, error) {
 	u, ok := ctx.Value(contextUserKey).(user.User)
 	if !ok {
 		return nil, herror.ErrFailedToGetUser
 	}
 	return u, nil
+}
+
+func CallerFromContext(ctx context.Context) string {
+	c, ok := ctx.Value(contextCallerKey).(string)
+	if !ok {
+		return ""
+	}
+	return c
 }
 
 func WithContext(parent context.Context, user user.User) context.Context {

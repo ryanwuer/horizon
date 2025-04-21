@@ -280,7 +280,7 @@ var (
 	ErrOAuthRefreshTokenExpired    = errors.New("refresh token expired")
 	ErrOAuthReqNotValid            = errors.New("oauth request not valid")
 	ErrOAuthInternal               = errors.New("oauth internal error")
-	ErrAuthorizationHeaderNotFound = errors.New("AuthorizationHeader not found")
+	ErrAuthorizationHeaderNotFound = errors.New("Authorization header not found")
 	ErrOAuthTokenFormatError       = errors.New("Oauth token format error")
 	ErrOAuthNotGroupOwnerType      = errors.New("not group oauth app")
 
