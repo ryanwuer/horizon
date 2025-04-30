@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ import (
 	applicationgitrepomock "github.com/horizoncd/horizon/mock/pkg/application/gitrepo"
 	applicationmanangermock "github.com/horizoncd/horizon/mock/pkg/application/manager"
 	cdmock "github.com/horizoncd/horizon/mock/pkg/cd"
+	mockcd "github.com/horizoncd/horizon/mock/pkg/cd"
 	commitmock "github.com/horizoncd/horizon/mock/pkg/cluster/code"
 	clustergitrepomock "github.com/horizoncd/horizon/mock/pkg/cluster/gitrepo"
 	clustermanagermock "github.com/horizoncd/horizon/mock/pkg/cluster/manager"
@@ -54,10 +56,12 @@ import (
 	trschemamock "github.com/horizoncd/horizon/mock/pkg/templaterelease/schema"
 	appgitrepo "github.com/horizoncd/horizon/pkg/application/gitrepo"
 	appmodels "github.com/horizoncd/horizon/pkg/application/models"
+	applicationservice "github.com/horizoncd/horizon/pkg/application/service"
 	userauth "github.com/horizoncd/horizon/pkg/authentication/user"
 	codemodels "github.com/horizoncd/horizon/pkg/cluster/code"
 	"github.com/horizoncd/horizon/pkg/cluster/gitrepo"
 	"github.com/horizoncd/horizon/pkg/cluster/models"
+	clustermodels "github.com/horizoncd/horizon/pkg/cluster/models"
 	cluterservice "github.com/horizoncd/horizon/pkg/cluster/service"
 	gitconfig "github.com/horizoncd/horizon/pkg/config/git"
 	templateconfig "github.com/horizoncd/horizon/pkg/config/template"
@@ -447,7 +451,7 @@ var (
     }
 	`
 
-	db, _   = orm.NewSqliteDB("")
+	db, _   = orm.NewSqliteDB("file::memory:?cache=shared")
 	manager = managerparam.InitManager(db)
 )
 
@@ -497,21 +501,32 @@ func TestMain(m *testing.M) {
 }
 
 func TestAll(t *testing.T) {
-	t.Run("Test", test)
-	t.Run("TestV2", testV2)
-	t.Run("TestUpgrade", testUpgrade)
-	t.Run("TestListClusterByNameFuzzily", testListClusterByNameFuzzily)
-	t.Run("TestGetClusterOutPut", testGetClusterOutPut)
-	t.Run("TestRenderOutPutObject", testRenderOutPutObject)
-	t.Run("TestRenderOutPutObjectMissingKey", testRenderOutPutObjectMissingKey)
-	t.Run("testRenderOutPutObjectRepetitiveKey", testRenderOutPutObjectRepetitiveKey)
-	t.Run("TestIsClusterActuallyHealthy", testIsClusterActuallyHealthy)
-	t.Run("TestControllerFreeOrDeleteClusterFailed", testControllerFreeOrDeleteClusterFailed)
-	t.Run("TestImageURL", testImageURL)
-	t.Run("TestPinyin", testPinyin)
-	t.Run("TestListUserClustersByNameFuzzily", testListUserClustersByNameFuzzily)
-	t.Run("TestListClusterWithExpiry", testListClusterWithExpiry)
-	t.Run("TestGetClusterStatusV2", testGetClusterStatusV2)
+	tests := []struct {
+		name string
+		test func(t *testing.T)
+	}{
+		{"Test", test},
+		{"TestV2", testV2},
+		{"TestUpgrade", testUpgrade},
+		{"TestListClusterByNameFuzzily", testListClusterByNameFuzzily},
+		{"TestGetClusterOutPut", testGetClusterOutPut},
+		{"TestRenderOutPutObject", testRenderOutPutObject},
+		{"TestRenderOutPutObjectMissingKey", testRenderOutPutObjectMissingKey},
+		{"testRenderOutPutObjectRepetitiveKey", testRenderOutPutObjectRepetitiveKey},
+		{"TestIsClusterActuallyHealthy", testIsClusterActuallyHealthy},
+		{"TestControllerFreeOrDeleteClusterFailed", testControllerFreeOrDeleteClusterFailed},
+		{"TestImageURL", testImageURL},
+		{"TestPinyin", testPinyin},
+		{"TestListUserClustersByNameFuzzily", testListUserClustersByNameFuzzily},
+		{"TestListClusterWithExpiry", testListClusterWithExpiry},
+		{"TestGetClusterStatusV2", testGetClusterStatusV2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.test(t)
+		})
+	}
 }
 
 // nolint
@@ -929,8 +944,11 @@ func test(t *testing.T) {
 	clusterGitRepo.EXPECT().GetEnvValue(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&gitrepo.EnvValue{
 		Namespace: "test-1",
 	}, nil).AnyTimes()
+	clusterGitRepo.EXPECT().UpdateEnvValue(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("env-commit", nil).AnyTimes()
 	cd.EXPECT().CreateCluster(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	cd.EXPECT().DeployCluster(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	cd.EXPECT().GetClusterStateV1(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	tekton.EXPECT().CreatePipelineRun(gomock.Any(), gomock.Any()).Return("abc", nil).AnyTimes()
 	internalDeployRespV2, err := c.InternalDeployV2(newCtx, resp.ID, &InternalDeployRequestV2{
 		PipelinerunID: buildDeployResp.PipelinerunID,
 		Output:        nil,
@@ -2033,4 +2051,368 @@ func testIsClusterActuallyHealthy(t *testing.T) {
 
 	// three t1 pods is not expected
 	assert.Equal(t, false, isClusterActuallyHealthy(ctx, cs, imageV1, tActual, 3))
+}
+
+func testListClusterByNameFuzzily(t *testing.T) {
+	// init data
+	var groups []*groupmodels.Group
+	for i := 0; i < 5; i++ {
+		name := "groupForClusterFuzzily" + strconv.Itoa(i)
+		group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
+			Name:     name,
+			Path:     name,
+			ParentID: 0,
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, group)
+		groups = append(groups, group)
+	}
+
+	var applications []*appmodels.Application
+	for i := 0; i < 5; i++ {
+		group := groups[i]
+		name := "appForClusterFuzzily" + strconv.Itoa(i)
+		application, err := manager.ApplicationMgr.Create(ctx, &appmodels.Application{
+			GroupID:         group.ID,
+			Name:            name,
+			Priority:        "P3",
+			GitURL:          "ssh://git.com",
+			GitSubfolder:    "/test",
+			GitRef:          "master",
+			Template:        "javaapp",
+			TemplateRelease: "v1.0.0",
+		}, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, application)
+		applications = append(applications, application)
+	}
+
+	region, err := manager.RegionMgr.Create(ctx, &regionmodels.Region{
+		Name:        "hzFuzzily",
+		DisplayName: "HZFuzzily",
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, region)
+
+	for i := 0; i < 5; i++ {
+		application := applications[i]
+		name := "fuzzilyCluster" + strconv.Itoa(i)
+		cluster, err := manager.ClusterMgr.Create(ctx, &clustermodels.Cluster{
+			ApplicationID:   application.ID,
+			Name:            name,
+			EnvironmentName: "testFuzzily",
+			RegionName:      "hzFuzzily",
+		}, nil, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, cluster)
+	}
+
+	c = &controller{
+		clusterMgr:     manager.ClusterMgr,
+		applicationMgr: manager.ApplicationMgr,
+		applicationSvc: applicationservice.NewService(groupservice.NewService(manager), manager),
+		groupManager:   manager.GroupMgr,
+		memberManager:  manager.MemberMgr,
+		eventSvc:       eventservice.New(manager),
+		commitGetter:   commitGetter,
+	}
+
+	resps, count, err := c.List(ctx, &q.Query{Keywords: q.KeyWords{common.ClusterQueryName: "fuzzilyCluster"}})
+	assert.Nil(t, err)
+	assert.Equal(t, 5, count)
+	assert.Equal(t, "fuzzilyCluster4", resps[0].Name)
+	assert.Equal(t, "fuzzilyCluster3", resps[1].Name)
+	assert.Equal(t, "fuzzilyCluster0", resps[4].Name)
+	for _, resp := range resps {
+		b, _ := json.Marshal(resp)
+		t.Logf("%v", string(b))
+	}
+}
+
+func testListUserClustersByNameFuzzily(t *testing.T) {
+	// init data
+	region, err := manager.RegionMgr.Create(ctx, &regionmodels.Region{
+		Name:        "hzUserClustersFuzzily",
+		DisplayName: "HZUserClusters",
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, region)
+
+	er, err := manager.EnvironmentRegionMgr.CreateEnvironmentRegion(ctx, &envregionmodels.EnvironmentRegion{
+		EnvironmentName: "testUserClustersFuzzily",
+		RegionName:      "hzUserClustersFuzzily",
+	})
+	assert.Nil(t, err)
+
+	var groups []*groupmodels.Group
+	for i := 0; i < 5; i++ {
+		name := "groupForUserClusterFuzzily" + strconv.Itoa(i)
+		group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
+			Name:     name,
+			Path:     name,
+			ParentID: 0,
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, group)
+		groups = append(groups, group)
+	}
+
+	var applications []*appmodels.Application
+	for i := 0; i < 5; i++ {
+		group := groups[i]
+		name := "appForUserClusterFuzzily" + strconv.Itoa(i)
+		application, err := manager.ApplicationMgr.Create(ctx, &appmodels.Application{
+			GroupID:         group.ID,
+			Name:            name,
+			Priority:        "P3",
+			GitURL:          "ssh://git.com",
+			GitSubfolder:    "/test",
+			GitRef:          "master",
+			Template:        "javaapp",
+			TemplateRelease: "v1.0.0",
+		}, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, application)
+		applications = append(applications, application)
+	}
+
+	var clusters []*clustermodels.Cluster
+	for i := 0; i < 5; i++ {
+		application := applications[i]
+		name := "userClusterFuzzily" + strconv.Itoa(i)
+		cluster, err := manager.ClusterMgr.Create(ctx, &clustermodels.Cluster{
+			ApplicationID:   application.ID,
+			Name:            name,
+			EnvironmentName: "testUserClustersFuzzily",
+			RegionName:      "hzUserClustersFuzzily",
+			GitURL:          "ssh://git@cloudnative.com:22222/music-cloud-native/horizon/horizon.git",
+		}, nil, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, cluster)
+		clusters = append(clusters, cluster)
+	}
+
+	// nolint
+	ctx = context.WithValue(ctx, common.UserContextKey(), &userauth.DefaultInfo{
+		Name: "Matt",
+		ID:   uint(2),
+	})
+	_, err = manager.MemberMgr.Create(ctx, &membermodels.Member{
+		ResourceType: membermodels.TypeGroup,
+		ResourceID:   groups[0].ID,
+		Role:         "owner",
+		MemberType:   membermodels.MemberUser,
+		MemberNameID: 2,
+	})
+	assert.Nil(t, err)
+
+	_, err = manager.MemberMgr.Create(ctx, &membermodels.Member{
+		ResourceType: membermodels.TypeApplication,
+		ResourceID:   applications[1].ID,
+		Role:         "owner",
+		MemberType:   membermodels.MemberUser,
+		MemberNameID: 2,
+	})
+	assert.Nil(t, err)
+
+	_, err = manager.MemberMgr.Create(ctx, &membermodels.Member{
+		ResourceType: membermodels.TypeApplicationCluster,
+		ResourceID:   clusters[3].ID,
+		Role:         "owner",
+		MemberType:   membermodels.MemberUser,
+		MemberNameID: 2,
+	})
+	assert.Nil(t, err)
+
+	c = &controller{
+		clusterMgr:     manager.ClusterMgr,
+		applicationMgr: manager.ApplicationMgr,
+		applicationSvc: applicationservice.NewService(groupservice.NewService(manager), manager),
+		groupManager:   manager.GroupMgr,
+		memberManager:  manager.MemberMgr,
+		eventSvc:       eventservice.New(manager),
+		commitGetter:   commitGetter,
+	}
+
+	resps, count, err := c.List(ctx,
+		&q.Query{
+			Keywords: q.KeyWords{
+				common.ClusterQueryName:        "cluster",
+				common.ClusterQueryEnvironment: er.EnvironmentName,
+				common.ClusterQueryByUser:      uint(2),
+			}})
+	assert.Nil(t, err)
+	assert.Equal(t, 3, count)
+	assert.Equal(t, "userClusterFuzzily3", resps[0].Name)
+	assert.Equal(t, "userClusterFuzzily1", resps[1].Name)
+	assert.Equal(t, "userClusterFuzzily0", resps[2].Name)
+	for _, resp := range resps {
+		b, _ := json.Marshal(resp)
+		t.Logf("%v", string(b))
+	}
+
+	resps, count, err = c.List(ctx, &q.Query{
+		Keywords: q.KeyWords{
+			common.ClusterQueryName:        "userCluster",
+			common.ClusterQueryEnvironment: er.EnvironmentName,
+			common.ClusterQueryByUser:      uint(2),
+		},
+		PageSize: 2,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, 3, count)
+	assert.Equal(t, "userClusterFuzzily3", resps[0].Name)
+	assert.Equal(t, "userClusterFuzzily1", resps[1].Name)
+	for _, resp := range resps {
+		b, _ := json.Marshal(resp)
+		t.Logf("%v", string(b))
+	}
+}
+
+func testListClusterWithExpiry(t *testing.T) {
+	// init data
+	clusterInstance := &clustermodels.Cluster{
+		ApplicationID:   uint(1),
+		Name:            "clusterWithExpiry",
+		EnvironmentName: "testListClusterWithExpiry",
+		RegionName:      "hzListClusterWithExpiry",
+		GitURL:          "ssh://git@cloudnative.com:22222/music-cloud-native/horizon/horizon.git",
+		Status:          "",
+		ExpireSeconds:   secondsInOneDay,
+	}
+
+	cluster, err := manager.ClusterMgr.Create(ctx, clusterInstance, nil, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, cluster)
+	firstClusterID := cluster.ID
+
+	num := 4
+	for i := 1; i <= num; i++ {
+		clusterInstance.ID = 0
+		clusterInstance.Name = "clusterWithExpiry" + strconv.Itoa(i)
+		cluster, err := manager.ClusterMgr.Create(ctx, clusterInstance, nil, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, cluster)
+	}
+
+	clusterWithExpiry, err := c.ListClusterWithExpiry(ctx, &q.Query{
+		Keywords: q.KeyWords{common.IDThan: int(firstClusterID)},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, num, len(clusterWithExpiry))
+	for _, clr := range clusterWithExpiry {
+		t.Logf("%+v", clr)
+	}
+}
+
+func testControllerFreeOrDeleteClusterFailed(t *testing.T) {
+	mockCtl := gomock.NewController(t)
+	cd := mockcd.NewMockCD(mockCtl)
+	cd.EXPECT().DeleteCluster(gomock.Any(), gomock.Any()).Return(errors.New("test")).AnyTimes()
+
+	c = &controller{
+		cd:             cd,
+		clusterMgr:     manager.ClusterMgr,
+		applicationMgr: manager.ApplicationMgr,
+		applicationSvc: applicationservice.NewService(groupservice.NewService(manager), manager),
+		groupManager:   manager.GroupMgr,
+		envMgr:         manager.EnvMgr,
+		badgeMgr:       manager.BadgeMgr,
+		regionMgr:      manager.RegionMgr,
+		eventSvc:       eventservice.New(manager),
+	}
+
+	id, err := registrydao.NewDAO(db).Create(ctx, &registrymodels.Registry{
+		Server: "http://127.0.0.1",
+	})
+	assert.Nil(t, err)
+	region, err := manager.RegionMgr.Create(ctx, &regionmodels.Region{
+		Name:        "TestController_FreeOrDeleteClusterFailed",
+		DisplayName: "TestController_FreeOrDeleteClusterFailed",
+		RegistryID:  id,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, region)
+
+	group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
+		Name:     "TestController_FreeOrDeleteClusterFailed",
+		Path:     "/TestController_FreeOrDeleteClusterFailed",
+		ParentID: 0,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, group)
+
+	application, err := manager.ApplicationMgr.Create(ctx, &appmodels.Application{
+		GroupID:         group.ID,
+		Name:            "TestController_FreeOrDeleteClusterFailed",
+		Priority:        "P3",
+		GitURL:          "ssh://git.com",
+		GitSubfolder:    "/test",
+		GitRef:          "master",
+		Template:        "javaapp",
+		TemplateRelease: "v1.0.0",
+	}, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, application)
+
+	cluster, err := manager.ClusterMgr.Create(ctx, &clustermodels.Cluster{
+		ApplicationID:   application.ID,
+		Name:            "TestController_FreeOrDeleteClusterFailed",
+		EnvironmentName: "TestController_FreeOrDeleteClusterFailed",
+		RegionName:      region.Name,
+		GitURL:          "",
+	}, nil, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, cluster)
+
+	// if failed to free, status should be set to empty
+	err = c.FreeCluster(ctx, cluster.ID)
+	assert.Nil(t, err)
+	time.Sleep(time.Second)
+	cluster, err = manager.ClusterMgr.GetByID(ctx, cluster.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, "", cluster.Status)
+
+	// if failed to delete, status should be set to empty
+	err = c.DeleteCluster(ctx, cluster.ID, false)
+	assert.Nil(t, err)
+	time.Sleep(time.Second)
+	cluster, err = manager.ClusterMgr.GetByID(ctx, cluster.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, "", cluster.Status)
+
+	_, err = manager.BadgeMgr.Create(ctx, &badgemodels.Badge{
+		ResourceType: common.ResourceCluster,
+		ResourceID:   cluster.ID,
+		Name:         "horizon",
+	})
+	assert.Nil(t, err)
+
+	_, err = manager.BadgeMgr.Create(ctx, &badgemodels.Badge{
+		ResourceType: common.ResourceCluster,
+		ResourceID:   cluster.ID,
+		Name:         "horizon1",
+	})
+	assert.Nil(t, err)
+
+	badges, err := manager.BadgeMgr.List(ctx, common.ResourceCluster, cluster.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(badges))
+
+	cluster, err = manager.ClusterMgr.Create(ctx, &clustermodels.Cluster{
+		ApplicationID:   application.ID,
+		Name:            "TestController_FreeOrDeleteClusterFailed2",
+		EnvironmentName: "TestController_FreeOrDeleteClusterFailed2",
+		RegionName:      region.Name,
+		GitURL:          "",
+	}, nil, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, cluster)
+
+	err = c.DeleteCluster(ctx, cluster.ID, true)
+	assert.Nil(t, err)
+
+	badges, err = manager.BadgeMgr.List(ctx, common.ResourceCluster, cluster.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(badges))
 }

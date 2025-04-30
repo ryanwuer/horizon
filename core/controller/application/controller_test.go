@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/horizoncd/horizon/core/common"
+	"github.com/horizoncd/horizon/core/config"
 	"github.com/horizoncd/horizon/lib/orm"
 	"github.com/horizoncd/horizon/lib/q"
 	appgitrepomock "github.com/horizoncd/horizon/mock/pkg/application/gitrepo"
@@ -32,6 +33,7 @@ import (
 	userauth "github.com/horizoncd/horizon/pkg/authentication/user"
 	codemodels "github.com/horizoncd/horizon/pkg/cluster/code"
 	clustermodels "github.com/horizoncd/horizon/pkg/cluster/models"
+	"github.com/horizoncd/horizon/pkg/config/template"
 	eventmodels "github.com/horizoncd/horizon/pkg/event/models"
 	eventservice "github.com/horizoncd/horizon/pkg/event/service"
 	groupmodels "github.com/horizoncd/horizon/pkg/group/models"
@@ -270,6 +272,10 @@ var (
     }
 }`
 	manager *managerparam.Manager
+
+	cfg = &config.Config{
+		TemplateUpgradeMapper: template.UpgradeMapper{},
+	}
 )
 
 // nolint
@@ -370,7 +376,7 @@ func Test(t *testing.T) {
 		ApplicationGitRepo:   applicationGitRepo,
 		TemplateSchemaGetter: templateSchemaGetter,
 	}
-	c = NewController(nil, params)
+	c = NewController(cfg, params)
 
 	group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
 		Name: "ABC",
@@ -534,7 +540,7 @@ func TestV2(t *testing.T) {
 		ApplicationGitRepo:   applicationGitRepo,
 		TemplateSchemaGetter: templateSchemaGetter,
 	}
-	c := NewController(nil, params)
+	c := NewController(cfg, params)
 	group, err := manager.GroupMgr.Create(ctx, &groupmodels.Group{
 		Name: "cde",
 		Path: "cde",
@@ -681,7 +687,7 @@ func TestListUserApplication(t *testing.T) {
 		applications = append(applications, application)
 	}
 
-	c = NewController(nil, &param.Param{
+	c = NewController(cfg, &param.Param{
 		Manager:  manager,
 		GroupSvc: groupservice.NewService(manager),
 	})

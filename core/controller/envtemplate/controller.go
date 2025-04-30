@@ -73,9 +73,11 @@ func (c *controller) UpdateEnvTemplateV2(ctx context.Context, applicationID uint
 			extraBytes, _ := json.Marshal(extra)
 			extraStr = string(extraBytes)
 		}
-		// record event
-		c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceApplication, applicationID,
-			eventmodels.ApplicationUpdated, &extraStr)
+		if c.eventSvc != nil {
+			// record event
+			c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceApplication, applicationID,
+				eventmodels.ApplicationUpdated, &extraStr)
+		}
 	}()
 
 	// 1. get application
@@ -135,9 +137,11 @@ func (c *controller) UpdateEnvTemplate(ctx context.Context,
 			extraBytes, _ := json.Marshal(extra)
 			extraStr = string(extraBytes)
 		}
-		// record event
-		c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceApplication, applicationID,
-			eventmodels.ApplicationUpdated, &extraStr)
+		if c.eventSvc != nil {
+			// record event
+			c.eventSvc.CreateEventIgnoreError(ctx, common.ResourceApplication, applicationID,
+				eventmodels.ApplicationUpdated, &extraStr)
+		}
 	}()
 
 	// 1. get application
