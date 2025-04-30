@@ -332,7 +332,8 @@ func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
 	return g.GetClusterByBranch(ctx, application, cluster, templateName, GitOpsBranch)
 }
 
-func (g *clusterGitopsRepo) GetClusterOnlineConfig(ctx context.Context, application, cluster, templateName string) (*ClusterFiles, error) {
+func (g *clusterGitopsRepo) GetClusterOnlineConfig(ctx context.Context, 
+	application, cluster, templateName string) (*ClusterFiles, error) {
 	return g.GetClusterByBranch(ctx, application, cluster, templateName, g.defaultBranch)
 }
 
