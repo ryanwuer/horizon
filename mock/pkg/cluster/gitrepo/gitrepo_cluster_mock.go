@@ -123,6 +123,21 @@ func (mr *MockClusterGitRepoMockRecorder) GetCluster(ctx, application, cluster, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCluster", reflect.TypeOf((*MockClusterGitRepo)(nil).GetCluster), ctx, application, cluster, templateName)
 }
 
+// GetClusterOnlineConfig mocks base method.
+func (m *MockClusterGitRepo) GetClusterOnlineConfig(ctx context.Context, application, cluster, templateName string) (*gitrepo.ClusterFiles, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetClusterOnlineConfig", ctx, application, cluster, templateName)
+	ret0, _ := ret[0].(*gitrepo.ClusterFiles)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetClusterOnlineConfig indicates an expected call of GetClusterOnlineConfig.
+func (mr *MockClusterGitRepoMockRecorder) GetClusterOnlineConfig(ctx, application, cluster, templateName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterOnlineConfig", reflect.TypeOf((*MockClusterGitRepo)(nil).GetClusterOnlineConfig), ctx, application, cluster, templateName)
+}
+
 // GetClusterTemplate mocks base method.
 func (m *MockClusterGitRepo) GetClusterTemplate(ctx context.Context, application, cluster string) (*gitrepo.ClusterTemplate, error) {
 	m.ctrl.T.Helper()
