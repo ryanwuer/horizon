@@ -71,7 +71,8 @@ type GetResponse struct {
 	TemplateConf map[string]interface{}
 }
 
-//go:generate mockgen -source=$GOFILE -destination=../../../mock/pkg/application/gitrepo/gitrepo_applicationv2_mock.go -package=mock_gitrepo //nolint:lll
+//nolint:lll
+//go:generate mockgen -source=$GOFILE -destination=../../../mock/pkg/application/gitrepo/gitrepo_applicationv2_mock.go -package=mock_gitrepo
 type ApplicationGitRepo interface {
 	CreateOrUpdateApplication(ctx context.Context, application string, request CreateOrUpdateRequest) error
 	GetApplication(ctx context.Context, application, environment string) (*GetResponse, error)

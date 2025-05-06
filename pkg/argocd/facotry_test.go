@@ -54,7 +54,7 @@ func Test(t *testing.T) {
 	argoCD, err := factory.GetArgoCD("region", "test")
 	assert.Nil(t, err)
 	assert.NotNil(t, argoCD)
-	assert.Equal(t, NewArgoCD(argoCDTest2.URL, argoCDTest2.Token, argoCDTest2.Namespace), argoCD)
+	assert.Equal(t, NewArgoCD(argoCDTest.URL, argoCDTest.Token, argoCDTest.Namespace), argoCD)
 
 	// 2. use reg argocd from env-argocd mapper
 	argoCD, err = factory.GetArgoCD("region2", "reg")

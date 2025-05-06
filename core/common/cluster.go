@@ -33,6 +33,7 @@ const (
 	ClusterQueryTailLines     = "tailLines"
 	ClusterQueryExtraOwner    = "extraOwner"
 	ClusterQueryHard          = "hard"
+	ClusterQueryOnlineConfig  = "onlineConfig"
 
 	// ClusterQueryIsFavorite is used to query cluster with favorite for current user only.
 	ClusterQueryIsFavorite = "isFavorite"

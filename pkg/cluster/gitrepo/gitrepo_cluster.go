@@ -119,6 +119,7 @@ type ReadFileParam struct {
 //go:generate mockgen -source=$GOFILE -destination=../../../mock/pkg/cluster/gitrepo/gitrepo_cluster_mock.go -package=mock_gitrepo
 type ClusterGitRepo interface {
 	GetCluster(ctx context.Context, application, cluster, templateName string) (*ClusterFiles, error)
+	GetClusterOnlineConfig(ctx context.Context, application, cluster, templateName string) (*ClusterFiles, error)
 	GetClusterValueFiles(ctx context.Context,
 		application, cluster string) ([]ClusterValueFile, error)
 	// GetClusterTemplate parses cluster's template name and release from GitopsFileChart
@@ -193,8 +194,8 @@ func NewClusterGitlabRepo(ctx context.Context, rootGroup *gitlab.Group,
 	}, nil
 }
 
-func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
-	application, cluster, templateName string) (_ *ClusterFiles, err error) {
+func (g *clusterGitopsRepo) GetClusterByBranch(ctx context.Context,
+	application, cluster, templateName, branch string) (_ *ClusterFiles, err error) {
 	const op = "cluster git repo: get cluster"
 	defer wlog.Start(ctx, op).StopPrint()
 
@@ -207,7 +208,7 @@ func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		pipelineBytes, err1 = g.gitlabLib.GetFile(ctx, pid, GitOpsBranch, common.GitopsFilePipeline)
+		pipelineBytes, err1 = g.gitlabLib.GetFile(ctx, pid, branch, common.GitopsFilePipeline)
 		if err1 != nil {
 			return
 		}
@@ -218,7 +219,7 @@ func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
 	}()
 	go func() {
 		defer wg.Done()
-		applicationBytes, err2 = g.gitlabLib.GetFile(ctx, pid, GitOpsBranch, common.GitopsFileApplication)
+		applicationBytes, err2 = g.gitlabLib.GetFile(ctx, pid, branch, common.GitopsFileApplication)
 		if err2 != nil {
 			return
 		}
@@ -229,7 +230,7 @@ func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
 	}()
 	go func() {
 		defer wg.Done()
-		manifestBytes, err3 = g.gitlabLib.GetFile(ctx, pid, GitOpsBranch, common.GitopsFileManifest)
+		manifestBytes, err3 = g.gitlabLib.GetFile(ctx, pid, branch, common.GitopsFileManifest)
 		if err3 != nil {
 			return
 		}
@@ -324,6 +325,16 @@ func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
 		ApplicationJSONBlob: applicationJSONBlob,
 		Manifest:            manifestJSONBlob,
 	}, nil
+}
+
+func (g *clusterGitopsRepo) GetCluster(ctx context.Context,
+	application, cluster, templateName string) (_ *ClusterFiles, err error) {
+	return g.GetClusterByBranch(ctx, application, cluster, templateName, GitOpsBranch)
+}
+
+func (g *clusterGitopsRepo) GetClusterOnlineConfig(ctx context.Context,
+	application, cluster, templateName string) (*ClusterFiles, error) {
+	return g.GetClusterByBranch(ctx, application, cluster, templateName, g.defaultBranch)
 }
 
 func (g *clusterGitopsRepo) GetClusterValueFiles(ctx context.Context,

@@ -117,6 +117,7 @@ type Controller interface {
 
 	CreateClusterV2(ctx context.Context, params *CreateClusterParamsV2) (*CreateClusterResponseV2, error)
 	GetClusterV2(ctx context.Context, clusterID uint) (*GetClusterResponseV2, error)
+	GetClusterOnlineV2(ctx context.Context, clusterID uint) (*GetClusterResponseV2, error)
 	UpdateClusterV2(ctx context.Context, clusterID uint, r *UpdateClusterRequestV2, mergePatch bool) error
 	// InternalDeployV2 deploy only used by internal system
 	InternalDeployV2(ctx context.Context, clusterID uint,

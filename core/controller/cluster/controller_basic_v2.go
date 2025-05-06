@@ -258,115 +258,11 @@ func (c *controller) CreateClusterV2(ctx context.Context,
 }
 
 func (c *controller) GetClusterV2(ctx context.Context, clusterID uint) (*GetClusterResponseV2, error) {
-	const op = "cluster controller: get cluster v2"
-	defer wlog.Start(ctx, op).StopPrint()
+	return c.getClusterV2(ctx, clusterID, false)
+}
 
-	// 1. get cluster from db
-	cluster, err := c.clusterMgr.GetByID(ctx, clusterID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. get application
-	application, err := c.applicationMgr.GetByID(ctx, cluster.ApplicationID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. get region entity
-	regionEntity, err := c.regionMgr.GetRegionEntity(ctx, cluster.RegionName)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. gen fullPath
-	fullPath, err := func() (string, error) {
-		group, err := c.groupSvc.GetChildByID(ctx, application.GroupID)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%v/%v/%v", group.FullPath, application.Name, cluster.Name), nil
-	}()
-	if err != nil {
-		return nil, err
-	}
-
-	// 5. get tags
-	tags, err := c.tagMgr.ListByResourceTypeID(ctx, common.ResourceCluster, cluster.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 6. get GitRepo
-	clusterGitRepoFile, err := c.clusterGitRepo.GetCluster(ctx, application.Name, cluster.Name, cluster.Template)
-	if err != nil {
-		return nil, err
-	}
-
-	// 7. get createdBy and updatedBy users
-	userMap, err := c.userManager.GetUserMapByIDs(ctx, []uint{cluster.CreatedBy, cluster.UpdatedBy})
-	if err != nil {
-		return nil, err
-	}
-	getResp := &GetClusterResponseV2{
-		ID:          cluster.ID,
-		Name:        cluster.Name,
-		Description: cluster.Description,
-		// TODO: currently it's not allowed that the cluster has different priority with related application.
-		Priority: string(application.Priority),
-		Scope: &Scope{
-			Environment:       cluster.EnvironmentName,
-			Region:            cluster.RegionName,
-			RegionDisplayName: regionEntity.DisplayName,
-		},
-		ExpireTime: func() string {
-			expireTime := ""
-			if cluster.ExpireSeconds > 0 {
-				expireTime = time.Duration(cluster.ExpireSeconds * 1e9).String()
-			}
-			return expireTime
-		}(),
-		FullPath:        fullPath,
-		ApplicationName: application.Name,
-		ApplicationID:   application.ID,
-		Tags:            tagmodels.Tags(tags).IntoTagsBasic(),
-		Git: func() *codemodels.Git {
-			if cluster.GitURL == "" {
-				return nil
-			}
-			return codemodels.NewGit(cluster.GitURL, cluster.GitSubfolder,
-				cluster.GitRefType, cluster.GitRef)
-		}(),
-		Image:       cluster.Image,
-		BuildConfig: clusterGitRepoFile.PipelineJSONBlob,
-		TemplateInfo: func() *codemodels.TemplateInfo {
-			if cluster.Template == "" {
-				return nil
-			}
-			return &codemodels.TemplateInfo{
-				Name:    cluster.Template,
-				Release: cluster.TemplateRelease,
-			}
-		}(),
-		TemplateConfig: clusterGitRepoFile.ApplicationJSONBlob,
-		Manifest:       clusterGitRepoFile.Manifest,
-		Status:         cluster.Status,
-		CreatedAt:      cluster.CreatedAt,
-		UpdatedAt:      cluster.UpdatedAt,
-		CreatedBy:      toUser(getUserFromMap(cluster.CreatedBy, userMap)),
-		UpdatedBy:      toUser(getUserFromMap(cluster.UpdatedBy, userMap)),
-	}
-
-	// 8. get latest deployed commit
-	latestPR, err := c.prMgr.PipelineRun.GetLatestSuccessByClusterID(ctx, clusterID)
-	if err != nil {
-		return nil, err
-	}
-	if cluster.Status != common.ClusterStatusFreed &&
-		latestPR != nil {
-		getResp.TTLInSeconds, _ = c.clusterWillExpireIn(ctx, cluster)
-	}
-	return getResp, nil
+func (c *controller) GetClusterOnlineV2(ctx context.Context, clusterID uint) (*GetClusterResponseV2, error) {
+	return c.getClusterV2(ctx, clusterID, true)
 }
 
 func (c *controller) UpdateClusterV2(ctx context.Context, clusterID uint,
@@ -844,4 +740,121 @@ func (c *controller) createPipelineRun(ctx context.Context, clusterID uint,
 		ConfigCommit:     configCommitSHA,
 		RollbackFrom:     rollbackFrom,
 	}, nil
+}
+
+func (c *controller) getClusterV2(ctx context.Context, clusterID uint, onlineConfig bool) (*GetClusterResponseV2, error) {
+	const op = "cluster controller: get cluster v2"
+	defer wlog.Start(ctx, op).StopPrint()
+
+	// 1. get cluster from db
+	cluster, err := c.clusterMgr.GetByID(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. get application
+	application, err := c.applicationMgr.GetByID(ctx, cluster.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. get region entity
+	regionEntity, err := c.regionMgr.GetRegionEntity(ctx, cluster.RegionName)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. gen fullPath
+	fullPath, err := func() (string, error) {
+		group, err := c.groupSvc.GetChildByID(ctx, application.GroupID)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%v/%v/%v", group.FullPath, application.Name, cluster.Name), nil
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. get tags
+	tags, err := c.tagMgr.ListByResourceTypeID(ctx, common.ResourceCluster, cluster.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 6. get GitRepo
+	var clusterGitRepoFile *gitrepo.ClusterFiles
+	if !onlineConfig {
+		clusterGitRepoFile, err = c.clusterGitRepo.GetCluster(ctx, application.Name, cluster.Name, cluster.Template)
+	} else {
+		clusterGitRepoFile, err = c.clusterGitRepo.GetClusterOnlineConfig(ctx, application.Name, cluster.Name, cluster.Template)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 7. get createdBy and updatedBy users
+	userMap, err := c.userManager.GetUserMapByIDs(ctx, []uint{cluster.CreatedBy, cluster.UpdatedBy})
+	if err != nil {
+		return nil, err
+	}
+	getResp := &GetClusterResponseV2{
+		ID:          cluster.ID,
+		Name:        cluster.Name,
+		Description: cluster.Description,
+		// TODO: currently it's not allowed that the cluster has different priority with related application.
+		Priority: string(application.Priority),
+		Scope: &Scope{
+			Environment:       cluster.EnvironmentName,
+			Region:            cluster.RegionName,
+			RegionDisplayName: regionEntity.DisplayName,
+		},
+		ExpireTime: func() string {
+			expireTime := ""
+			if cluster.ExpireSeconds > 0 {
+				expireTime = time.Duration(cluster.ExpireSeconds * 1e9).String()
+			}
+			return expireTime
+		}(),
+		FullPath:        fullPath,
+		ApplicationName: application.Name,
+		ApplicationID:   application.ID,
+		Tags:            tagmodels.Tags(tags).IntoTagsBasic(),
+		Git: func() *codemodels.Git {
+			if cluster.GitURL == "" {
+				return nil
+			}
+			return codemodels.NewGit(cluster.GitURL, cluster.GitSubfolder,
+				cluster.GitRefType, cluster.GitRef)
+		}(),
+		Image:       cluster.Image,
+		BuildConfig: clusterGitRepoFile.PipelineJSONBlob,
+		TemplateInfo: func() *codemodels.TemplateInfo {
+			if cluster.Template == "" {
+				return nil
+			}
+			return &codemodels.TemplateInfo{
+				Name:    cluster.Template,
+				Release: cluster.TemplateRelease,
+			}
+		}(),
+		TemplateConfig: clusterGitRepoFile.ApplicationJSONBlob,
+		Manifest:       clusterGitRepoFile.Manifest,
+		Status:         cluster.Status,
+		CreatedAt:      cluster.CreatedAt,
+		UpdatedAt:      cluster.UpdatedAt,
+		CreatedBy:      toUser(getUserFromMap(cluster.CreatedBy, userMap)),
+		UpdatedBy:      toUser(getUserFromMap(cluster.UpdatedBy, userMap)),
+	}
+
+	// 8. get latest deployed commit
+	latestPR, err := c.prMgr.PipelineRun.GetLatestSuccessByClusterID(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if cluster.Status != common.ClusterStatusFreed &&
+		latestPR != nil {
+		getResp.TTLInSeconds, _ = c.clusterWillExpireIn(ctx, cluster)
+	}
+	return getResp, nil
 }

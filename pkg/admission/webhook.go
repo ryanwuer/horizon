@@ -71,6 +71,13 @@ func Mutating(ctx context.Context, request *Request) (*Request, error) {
 		if err = loggingError(ctx, err, webhook); err != nil {
 			return nil, err
 		}
+		if response != nil && response.Allowed != nil && !*response.Allowed {
+			log.Infof(ctx,
+				"request (resource: %s, resourceName: %s, subresource: %s, operation: %s) denied by webhook: %s",
+				request.Resource, request.Name, request.SubResource,
+				request.Operation, response.Result)
+			return nil, perror.Wrapf(herrors.ErrForbidden, "request denied by webhook: %s", response.Result)
+		}
 		if response != nil && response.Patch != nil {
 			request.Object, err = jsonPatch(request.Object, response.Patch)
 			if err = loggingError(ctx, err, webhook); err != nil {
