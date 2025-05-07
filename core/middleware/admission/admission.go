@@ -68,6 +68,16 @@ func Middleware(skippers ...middleware.Skipper) gin.HandlerFunc {
 				options[k] = v
 			}
 		}
+
+		// fill user info into admission request options
+		currentUser, err := common.UserFromContext(c)
+		if err != nil {
+			response.AbortWithRPCError(c,
+				rpcerror.ParamError.WithErrMsg(fmt.Sprintf("get user info failed, err: %v", err)))
+			return
+		}
+		options[common.UserContextKey()] = currentUser
+
 		admissionRequest := &admissionwebhook.Request{
 			Operation:   admissionmodels.Operation(attr.GetVerb()),
 			Resource:    attr.GetResource(),
