@@ -263,79 +263,11 @@ func (c *controller) clusterWillExpireIn(ctx context.Context, cluster *cmodels.C
 }
 
 func (c *controller) GetCluster(ctx context.Context, clusterID uint) (_ *GetClusterResponse, err error) {
-	const op = "cluster controller: get cluster"
-	defer wlog.Start(ctx, op).StopPrint()
+	return c.getCluster(ctx, clusterID, false)
+}
 
-	// 1. get cluster from db
-	cluster, err := c.clusterMgr.GetByID(ctx, clusterID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. get application
-	application, err := c.applicationMgr.GetByID(ctx, cluster.ApplicationID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. get files in git repo
-	clusterFiles := &gitrepo.ClusterFiles{}
-	if !isClusterStatusUnstable(cluster.Status) {
-		clusterFiles, err = c.clusterGitRepo.GetCluster(ctx, application.Name, cluster.Name, cluster.Template)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// 5. get full path
-	group, err := c.groupSvc.GetChildByID(ctx, application.GroupID)
-	if err != nil {
-		return nil, err
-	}
-	fullPath := fmt.Sprintf("%v/%v/%v", group.FullPath, application.Name, cluster.Name)
-
-	// 6. get namespace
-	envValue := &gitrepo.EnvValue{}
-	if !isClusterStatusUnstable(cluster.Status) {
-		envValue, err = c.clusterGitRepo.GetEnvValue(ctx, application.Name, cluster.Name, cluster.Template)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// 7. get tags
-	tags, err := c.tagMgr.ListByResourceTypeID(ctx, common.ResourceCluster, clusterID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 8. transfer model
-	clusterResp := ofClusterModel(application, cluster, fullPath, envValue.Namespace,
-		clusterFiles.PipelineJSONBlob, clusterFiles.ApplicationJSONBlob, tags...)
-
-	// 9. get latest deployed commit
-	latestPR, err := c.prMgr.PipelineRun.GetLatestSuccessByClusterID(ctx, clusterID)
-	if err != nil {
-		return nil, err
-	}
-	if latestPR != nil {
-		clusterResp.LatestDeployedCommit = latestPR.GitCommit
-		clusterResp.Image = latestPR.ImageURL
-	}
-
-	// 10. get createdBy and updatedBy users
-	userMap, err := c.userManager.GetUserMapByIDs(ctx, []uint{cluster.CreatedBy, cluster.UpdatedBy})
-	if err != nil {
-		return nil, err
-	}
-	clusterResp.CreatedBy = toUser(getUserFromMap(cluster.CreatedBy, userMap))
-	clusterResp.UpdatedBy = toUser(getUserFromMap(cluster.UpdatedBy, userMap))
-	if cluster.Status != common.ClusterStatusFreed &&
-		latestPR != nil {
-		clusterResp.TTLInSeconds, _ = c.clusterWillExpireIn(ctx, cluster)
-	}
-
-	return clusterResp, nil
+func (c *controller) GetClusterOnline(ctx context.Context, clusterID uint) (_ *GetClusterResponse, err error) {
+	return c.getCluster(ctx, clusterID, true)
 }
 
 func (c *controller) GetClusterOutput(ctx context.Context, clusterID uint) (_ interface{}, err error) {
@@ -1187,4 +1119,84 @@ func (c *controller) addIsFavoriteForClusters(ctx context.Context,
 		}
 	}
 	return nil
+}
+
+func (c *controller) getCluster(ctx context.Context, clusterID uint, onlineConfig bool) (_ *GetClusterResponse, err error) {
+	const op = "cluster controller: get cluster"
+	defer wlog.Start(ctx, op).StopPrint()
+
+	// 1. get cluster from db
+	cluster, err := c.clusterMgr.GetByID(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. get application
+	application, err := c.applicationMgr.GetByID(ctx, cluster.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. get files in git repo
+	clusterFiles := &gitrepo.ClusterFiles{}
+	if !isClusterStatusUnstable(cluster.Status) {
+		if !onlineConfig {
+			clusterFiles, err = c.clusterGitRepo.GetCluster(ctx, application.Name, cluster.Name, cluster.Template)
+		} else {
+			clusterFiles, err = c.clusterGitRepo.GetClusterOnlineConfig(ctx, application.Name, cluster.Name, cluster.Template)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 5. get full path
+	group, err := c.groupSvc.GetChildByID(ctx, application.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	fullPath := fmt.Sprintf("%v/%v/%v", group.FullPath, application.Name, cluster.Name)
+
+	// 6. get namespace
+	envValue := &gitrepo.EnvValue{}
+	if !isClusterStatusUnstable(cluster.Status) {
+		envValue, err = c.clusterGitRepo.GetEnvValue(ctx, application.Name, cluster.Name, cluster.Template)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 7. get tags
+	tags, err := c.tagMgr.ListByResourceTypeID(ctx, common.ResourceCluster, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 8. transfer model
+	clusterResp := ofClusterModel(application, cluster, fullPath, envValue.Namespace,
+		clusterFiles.PipelineJSONBlob, clusterFiles.ApplicationJSONBlob, tags...)
+
+	// 9. get latest deployed commit
+	latestPR, err := c.prMgr.PipelineRun.GetLatestSuccessByClusterID(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if latestPR != nil {
+		clusterResp.LatestDeployedCommit = latestPR.GitCommit
+		clusterResp.Image = latestPR.ImageURL
+	}
+
+	// 10. get createdBy and updatedBy users
+	userMap, err := c.userManager.GetUserMapByIDs(ctx, []uint{cluster.CreatedBy, cluster.UpdatedBy})
+	if err != nil {
+		return nil, err
+	}
+	clusterResp.CreatedBy = toUser(getUserFromMap(cluster.CreatedBy, userMap))
+	clusterResp.UpdatedBy = toUser(getUserFromMap(cluster.UpdatedBy, userMap))
+	if cluster.Status != common.ClusterStatusFreed &&
+		latestPR != nil {
+		clusterResp.TTLInSeconds, _ = c.clusterWillExpireIn(ctx, cluster)
+	}
+
+	return clusterResp, nil
 }

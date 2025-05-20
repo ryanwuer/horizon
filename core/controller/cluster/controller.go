@@ -72,6 +72,7 @@ type Controller interface {
 	DeleteCluster(ctx context.Context, clusterID uint, hard bool) error
 
 	GetCluster(ctx context.Context, clusterID uint) (*GetClusterResponse, error)
+	GetClusterOnline(ctx context.Context, clusterID uint) (*GetClusterResponse, error)
 	GetClusterByName(ctx context.Context,
 		clusterName string) (*GetClusterByNameResponse, error)
 	GetClusterOutput(ctx context.Context, clusterID uint) (interface{}, error)
