@@ -305,7 +305,24 @@ func (a *API) Get(c *gin.Context) {
 		response.AbortWithRequestError(c, common.InvalidRequestParam, err.Error())
 		return
 	}
-	resp, err := a.clusterCtl.GetCluster(c, uint(clusterID))
+
+	onlineConfig := false
+	onlineConfigStr := c.Request.URL.Query().Get(common.ClusterQueryOnlineConfig)
+	if onlineConfigStr != "" {
+		onlineConfig, err = strconv.ParseBool(onlineConfigStr)
+		if err != nil {
+			response.AbortWithRequestError(c, common.InvalidRequestParam, err.Error())
+			return	
+		}
+	}
+
+	var resp *cluster.GetClusterResponse
+	if !onlineConfig {
+		resp, err = a.clusterCtl.GetCluster(c, uint(clusterID))
+	} else {
+		resp, err = a.clusterCtl.GetClusterOnline(c, uint(clusterID))
+	}
+
 	if err != nil {
 		if e, ok := perror.Cause(err).(*herrors.HorizonErrNotFound); ok && e.Source == herrors.ClusterInDB {
 			response.AbortWithRPCError(c, rpcerror.NotFoundError.WithErrMsg(err.Error()))
