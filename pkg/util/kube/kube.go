@@ -264,6 +264,15 @@ func Exec(ctx context.Context, c ContainerRef,
 
 	out := bytes.NewBuffer([]byte{})
 	errOut := bytes.NewBuffer([]byte{})
+
+	podClient := c.KubeClientset.CoreV1()
+	if c.Config != nil {
+		// compatible with the Karmada(https://karmada.io/)
+		// karamda-search cannot handle the request with the acceptContentType: application/vnd.kubernetes.protobuf
+		c.Config.AcceptContentTypes = runtime.ContentTypeJSON
+		podClient = kubernetes.NewForConfigOrDie(c.Config).CoreV1()
+	}
+
 	options := &exec.ExecOptions{
 		StreamOptions: exec.StreamOptions{
 			IOStreams: genericclioptions.IOStreams{
@@ -276,7 +285,7 @@ func Exec(ctx context.Context, c ContainerRef,
 		},
 
 		Config:    c.Config,
-		PodClient: c.KubeClientset.CoreV1(),
+		PodClient: podClient,
 
 		Command:  command,
 		Executor: &exec.DefaultRemoteExecutor{},
