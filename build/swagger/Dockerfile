@@ -1,4 +1,4 @@
-FROM swaggerapi/swagger-ui:latest
+FROM harbor.yf-online.service.163.org/swaggerapi/swagger-ui:latest
 
 ARG GROUP=netease
 ARG USER=appops
