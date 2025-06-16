@@ -17,8 +17,8 @@ package rollout
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
+	"strings"
 
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
 	rolloutsv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
@@ -36,6 +36,10 @@ import (
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
+)
+
+const (
+	karmadaAnnotationFlag = "resource.karmada.io/cached-from-cluster"
 )
 
 var (
@@ -153,6 +157,7 @@ OUTTER:
 			log.Debugf(context.TODO(), "[workload rollout: %v]: pod(%v) is not Running", node.Name, pod.Name)
 			continue
 		}
+		r.amendPodSpec(&pod, instance.Spec.Template.Spec)
 		hashSum := computePodSpecHash(pod.Spec)
 		if templateHashSum != hashSum {
 			log.Debugf(context.TODO(), "[workload rollout: %v]: pod(%v)'s hash is not matched", node.Name, pod.Name)
@@ -191,10 +196,6 @@ func (r *rollout) ListPods(node *v1alpha1.ResourceNode,
 	}
 
 	selector := labels.SelectorFromSet(instance.Spec.Template.ObjectMeta.Labels)
-	if err != nil {
-		return nil, herrors.NewErrGetFailed(herrors.ResourceInK8S,
-			fmt.Sprintf("failed to get selectors for object %s/%s", instance.Namespace, instance.Name))
-	}
 	objs, err := podInformer.Lister().ByNamespace(node.Namespace).List(selector)
 	if err != nil {
 		return nil, err
@@ -318,4 +319,44 @@ func (r *rollout) Action(actionName string, un *unstructured.Unstructured) (*uns
 		return nil, perror.Wrapf(herrors.ErrParamInvalid, "unsupported action: %v", actionName)
 	}
 	return un, nil
+}
+
+// amendPodSpec amend the pod spec by rollout template spec
+// Conditions:
+// 1. registry part of the image could be replaced when the pod is scheduled by Karmada
+func (r *rollout) amendPodSpec(pod *corev1.Pod, rolloutTemplateSpec corev1.PodSpec) {
+	// check existance of karmada annotation
+	// if exist, replace the registry part of the image with the registry part of the rollout template spec
+	// if not exist, do nothing
+	if _, ok := pod.Annotations[karmadaAnnotationFlag]; ok {
+		for i, container := range pod.Spec.InitContainers {
+			_, image := splitImage(container.Image)
+			// check length of rollout template spec init containers
+			if i >= len(rolloutTemplateSpec.InitContainers) {
+				continue
+			}
+			registry, _ := splitImage(rolloutTemplateSpec.InitContainers[i].Image)
+			container.Image = registry + "/" + image
+			pod.Spec.InitContainers[i] = container
+		}
+		for i, container := range pod.Spec.Containers {
+			_, image := splitImage(container.Image)
+			// check length of rollout template spec containers
+			if i >= len(rolloutTemplateSpec.Containers) {
+				continue
+			}
+			registry, _ := splitImage(rolloutTemplateSpec.Containers[i].Image)
+			container.Image = registry + "/" + image
+			pod.Spec.Containers[i] = container
+		}
+	}
+}
+	
+// splitImage split the image into registry and other parts
+func splitImage(image string) (string, string) {
+	parts := strings.Split(image, "/")
+	if len(parts) > 1 {
+		return parts[0], strings.Join(parts[1:], "/")
+	}
+	return "", ""
 }
