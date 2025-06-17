@@ -513,12 +513,18 @@ func (c *controller) GetStep(ctx context.Context, clusterID uint) (resp *GetStep
 		return nil, err
 	}
 
+	application, err := c.applicationMgr.GetByID(ctx, cluster.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+
 	regionEntity, err := c.regionMgr.GetRegionEntity(ctx, cluster.RegionName)
 	if err != nil {
 		return nil, err
 	}
 
 	steps, err := c.cd.GetStep(ctx, &cd.GetStepParams{
+		Application:  application.Name,
 		Environment:  cluster.EnvironmentName,
 		Cluster:      cluster.Name,
 		RegionEntity: regionEntity,
@@ -535,6 +541,7 @@ func (c *controller) GetStep(ctx context.Context, clusterID uint) (resp *GetStep
 			ManualPaused: steps.ManualPaused,
 			AutoPromote:  steps.AutoPromote,
 			Extra:        steps.Extra,
+			StepType:     steps.StepType,
 		}
 	} else {
 		resp = &GetStepResponse{
@@ -542,7 +549,6 @@ func (c *controller) GetStep(ctx context.Context, clusterID uint) (resp *GetStep
 			Index:        0,
 			Replicas:     []int{},
 			ManualPaused: false,
-			AutoPromote:  steps.AutoPromote,
 		}
 	}
 	return

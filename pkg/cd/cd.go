@@ -40,6 +40,7 @@ import (
 	"github.com/horizoncd/horizon/pkg/util/wlog"
 	"github.com/horizoncd/horizon/pkg/workload"
 	"github.com/horizoncd/horizon/pkg/workload/getter"
+	"github.com/horizoncd/horizon/pkg/workload/kservice"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -310,9 +311,13 @@ func (c *cd) GetStep(ctx context.Context, params *GetStepParams) (*Step, error) 
 
 	ifContinue := true
 	step := (*workload.Step)(nil)
+	var kServiceNode *ResourceTreeNode
 	c.traverseResourceTree(resourceTreeInArgo, func(node *ResourceTreeNode) bool {
 		if !ifContinue {
 			return ifContinue
+		}
+		if node.Group == kservice.GVRService.Group && node.Kind == kubeutil.ServiceKind {
+			kServiceNode = node
 		}
 		workload.LoopAbilities(func(workload workload.Workload) bool {
 			if !workload.MatchGK(schema.GroupKind{Group: node.Group, Kind: node.Kind}) {
@@ -342,6 +347,22 @@ func (c *cd) GetStep(ctx context.Context, params *GetStepParams) (*Step, error) 
 		}, nil
 	}
 
+	if kServiceNode != nil {
+		// check status of kservice
+		status, err := c.GetClusterState(ctx, &GetClusterStateV2Params{
+			Application:  params.Application,
+			RegionEntity: params.RegionEntity,
+			Environment:  params.Environment,
+			Cluster:      params.Cluster,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if status.Status == string(health.HealthStatusSuspended) {
+			step.Index += 1
+		}
+	}
+
 	return &Step{
 		Index:        step.Index,
 		Total:        step.Total,
@@ -349,6 +370,7 @@ func (c *cd) GetStep(ctx context.Context, params *GetStepParams) (*Step, error) 
 		ManualPaused: step.ManualPaused,
 		AutoPromote:  step.AutoPromote,
 		Extra:        step.Extra,
+		StepType:     string(step.StepType),
 	}, nil
 }
 
@@ -411,11 +433,15 @@ func (c *cd) GetClusterState(ctx context.Context,
 		return nil, err
 	}
 
+	var kServiceNode *ResourceTreeNode
 	if argoApp.Status.Health.Status == health.HealthStatusHealthy {
 		isHealthy := true
 		c.traverseResourceTree(resourceTreeInArgo, func(node *ResourceTreeNode) bool {
 			if !isHealthy {
 				return false
+			}
+			if node.Group == kservice.GVRService.Group && node.Kind == kubeutil.ServiceKind {
+				kServiceNode = node
 			}
 			workload.LoopAbilities(func(workload workload.Workload) bool {
 				if !workload.MatchGK(schema.GroupKind{Group: node.Group, Kind: node.Kind}) {
@@ -436,6 +462,22 @@ func (c *cd) GetClusterState(ctx context.Context,
 
 		if !isHealthy {
 			status.Status = string(health.HealthStatusProgressing)
+		} else {
+			// special case for kative service, it could be Suspended status when the it is healthy
+			if kServiceNode != nil {
+				// check if traffic percent of lastest revision is 100%
+				ksvc, err := kservice.GetServiceByNode(kServiceNode.ResourceNode, kubeClient)
+				if err != nil {
+					return nil, err
+				}
+				for _, traffic := range ksvc.Status.Traffic {
+					if traffic.LatestRevision != nil && *traffic.LatestRevision {
+						if *traffic.Percent != int64(100) {
+							status.Status = string(health.HealthStatusSuspended)
+						}
+					}
+				}
+			}
 		}
 	}
 	return status, nil

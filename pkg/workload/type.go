@@ -18,6 +18,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+type StepType string
+
+const (
+	StepTypeReplica StepType = "replica" // for Rollout
+	StepTypePercent StepType = "percent" // for Kative Service
+)
+
 type Step struct {
 	Index        int
 	Total        int
@@ -25,6 +32,7 @@ type Step struct {
 	ManualPaused bool
 	AutoPromote  bool
 	Extra        *string
+	StepType     StepType
 }
 
 type Revision struct {

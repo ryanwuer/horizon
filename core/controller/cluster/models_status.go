@@ -85,4 +85,5 @@ type GetStepResponse struct {
 	ManualPaused bool    `json:"manualPaused"`
 	AutoPromote  bool    `json:"autoPromote"`
 	Extra        *string `json:"extra"`
+	StepType     string  `json:"stepType"`
 }

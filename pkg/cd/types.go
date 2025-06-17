@@ -25,6 +25,7 @@ import (
 )
 
 type GetStepParams struct {
+	Application  string
 	Environment  string
 	Cluster      string
 	RegionEntity *regionmodels.RegionEntity
@@ -205,6 +206,7 @@ type Step struct {
 	ManualPaused bool    `json:"manualPaused"`
 	AutoPromote  bool    `json:"autoPromote"`
 	Extra        *string `json:"extra"`
+	StepType     string  `json:"stepType"`
 }
 
 // ClusterVersion version information

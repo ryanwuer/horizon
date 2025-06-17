@@ -35,6 +35,10 @@ import (
 	servicev1 "knative.dev/serving/pkg/apis/serving/v1"
 )
 
+const (
+	StepTotalAnnotationKey = "cloudnative.music.netease.com/step-total"
+)
+
 var (
 	GVRService = schema.GroupVersionResource{
 		Group:    "serving.knative.dev",
@@ -86,27 +90,7 @@ func (*service) getService(node *v1alpha1.ResourceNode,
 }
 
 func (*service) getServiceByNode(node *v1alpha1.ResourceNode, client *kube.Client) (*servicev1.Service, error) {
-	gvr := schema.GroupVersionResource{
-		Group:    "serving.knative.dev",
-		Version:  node.Version,
-		Resource: "services",
-	}
-
-	un, err := client.Dynamic.Resource(gvr).Namespace(node.Namespace).
-		Get(context.TODO(), node.Name, metav1.GetOptions{})
-	if err != nil {
-		return nil, perror.Wrapf(
-			herrors.NewErrGetFailed(herrors.ResourceInK8S,
-				"failed to get deployment in k8s"),
-			"failed to get deployment in k8s: deployment = %s, err = %v", node.Name, err)
-	}
-
-	var ksvc *servicev1.Service
-	err = runtime.DefaultUnstructuredConverter.FromUnstructured(un.UnstructuredContent(), &ksvc)
-	if err != nil {
-		return nil, err
-	}
-	return ksvc, nil
+	return GetServiceByNode(node, client)
 }
 
 func (s *service) ListPods(node *v1alpha1.ResourceNode,
@@ -189,6 +173,174 @@ OUTTER:
 	return count >= min && count <= max, nil
 }
 
+func (s *service) GetSteps(node *v1alpha1.ResourceNode, client *kube.Client) (*workload.Step, error) {
+	instance, err := s.getServiceByNode(node, client)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. get step total
+	stepTotal, ok := instance.Spec.Template.Annotations[StepTotalAnnotationKey]
+	if !ok {
+		return nil, nil
+	}
+	stepTotalInt, err := strconv.Atoi(stepTotal)
+	if err != nil {
+		return nil, perror.Wrapf(herrors.ErrParamInvalid, "step total is not a number")
+	}
+
+	// 2. get current traffic percent
+	if instance.Status.Traffic == nil {
+		return nil, nil
+	}
+	var latestRevisionPercent int
+	for _, traffic := range instance.Status.Traffic {
+		if traffic.LatestRevision != nil && *traffic.LatestRevision {
+			latestRevisionPercent = int(*traffic.Percent)
+		}
+	}
+
+	// 3. build traffic percent array
+	trafficPercentArray, err := buildTrafficPercentArray(stepTotalInt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. get step index
+	stepIndex := 0
+	sumPercent := 0
+	for i, trafficPercent := range trafficPercentArray {
+		sumPercent += trafficPercent
+		if sumPercent == latestRevisionPercent {
+			stepIndex = i
+			break
+		}
+	}
+
+	return &workload.Step{
+		Index:    stepIndex,
+		Total:    stepTotalInt,
+		Replicas: trafficPercentArray,
+		StepType: workload.StepTypePercent,
+	}, nil
+}
+
 func (*service) Action(actionName string, un *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	var instance *servicev1.Service
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.UnstructuredContent(), &instance)
+	if err != nil {
+		return un, perror.Wrapf(herrors.ErrParamInvalid, "convert to service failed: %v", err)
+	}
+	spec, ok := un.Object["spec"].(map[string]interface{})
+	if !ok {
+		return nil, perror.Wrapf(herrors.ErrParamInvalid, "spec not found")
+	}
+
+	switch actionName {
+	case "promote":
+		if instance.Status.Traffic == nil {
+			return nil, perror.Wrapf(herrors.ErrParamInvalid, "traffic is nil")
+		}
+		if len(instance.Status.Traffic)!= 2 {
+			return nil, perror.Wrapf(herrors.ErrParamInvalid, "traffic length is not 2")
+		}
+
+		stepTotal, ok := instance.Spec.Template.Annotations[StepTotalAnnotationKey]
+		if !ok {
+			return nil, nil
+		}
+		stepTotalInt, err := strconv.Atoi(stepTotal)
+		if err != nil {
+			return nil, perror.Wrapf(herrors.ErrParamInvalid, "step total is not a number")
+		}
+
+		var latestRevisionPercent int
+		for _, traffic := range instance.Status.Traffic {
+			if traffic.LatestRevision != nil && *traffic.LatestRevision {
+				latestRevisionPercent = int(*traffic.Percent)
+			}
+		}
+
+		trafficPercentArray, err := buildTrafficPercentArray(stepTotalInt)
+		if err != nil {
+			return nil, err
+		}
+
+		sumPercent := int64(0)
+		for _, trafficPercent := range trafficPercentArray {
+			sumPercent += int64(trafficPercent)
+			if sumPercent > int64(latestRevisionPercent) {
+				break
+			}
+		}
+
+		isLatestRevision := true
+		notLatestRevision := false
+		oldRevisionPercent := 100 - sumPercent
+		updatedTraffic := []servicev1.TrafficTarget{
+			{
+				LatestRevision: &isLatestRevision, 
+				Percent:        &sumPercent,  
+			},
+		}
+		if oldRevisionPercent != 0 {
+			updatedTraffic = append(updatedTraffic, servicev1.TrafficTarget{
+				LatestRevision: &notLatestRevision, 
+				Percent:        &oldRevisionPercent,  
+				RevisionName:   instance.Status.Traffic[1].RevisionName,
+			})
+		}
+		spec["traffic"] = updatedTraffic
+	default:
+		return nil, perror.Wrapf(herrors.ErrParamInvalid, "unsupported action: %v", actionName)
+	}
 	return un, nil
+}
+
+// buildTrafficPercentArray build traffic percent array
+// 1. first step is always 5%
+// 2. the rest steps split 95% evenly
+func buildTrafficPercentArray(stepTotal int) ([]int, error) {
+	if stepTotal <= 0 {
+		return nil, perror.Wrapf(herrors.ErrParamInvalid, "step total is not a positive number")
+	}
+
+	if stepTotal == 1 {
+		return []int{100}, nil
+	}
+
+	trafficPercentArray := make([]int, stepTotal)
+	trafficPercentArray[0] = 5
+	restPercent := 95
+	for i := 1; i < stepTotal; i++ {
+		trafficPercentArray[i] = restPercent / (stepTotal - 1)
+	}
+	// fix the last step to make the sum of the array equal to 95%
+	trafficPercentArray[stepTotal-1] = restPercent - (stepTotal-2)*trafficPercentArray[stepTotal-2]
+
+	return trafficPercentArray, nil
+}
+
+func GetServiceByNode(node *v1alpha1.ResourceNode, client *kube.Client) (*servicev1.Service, error) {
+	gvr := schema.GroupVersionResource{
+		Group:    "serving.knative.dev",
+		Version:  node.Version,
+		Resource: "services",
+	}
+
+	un, err := client.Dynamic.Resource(gvr).Namespace(node.Namespace).
+		Get(context.TODO(), node.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, perror.Wrapf(
+			herrors.NewErrGetFailed(herrors.ResourceInK8S,
+				"failed to get deployment in k8s"),
+			"failed to get deployment in k8s: deployment = %s, err = %v", node.Name, err)
+	}
+
+	var ksvc *servicev1.Service
+	err = runtime.DefaultUnstructuredConverter.FromUnstructured(un.UnstructuredContent(), &ksvc)
+	if err != nil {
+		return nil, err
+	}
+	return ksvc, nil
 }
